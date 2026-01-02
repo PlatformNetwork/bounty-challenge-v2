@@ -11,6 +11,8 @@
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Bittensor](https://img.shields.io/badge/bittensor-subnet-green.svg)](https://bittensor.com/)
 
+![Bounty Challenge Banner](assets/banner.svg)
+
 </div>
 
 Bounty Challenge is a decentralized bug bounty system on the Bittensor network. Miners earn rewards by discovering and reporting valid issues in the [CortexLM/fabric](https://github.com/CortexLM/fabric) repository. Issues must be closed with the `valid` label by project maintainers to qualify for rewards.
