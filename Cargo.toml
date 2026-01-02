@@ -17,8 +17,8 @@ path = "src/bin/bounty/main.rs"
 
 [dependencies]
 # Platform SDK
-platform-challenge-sdk = { path = "../platform-repo/crates/challenge-sdk", features = ["http-server"] }
-platform-core = { path = "../platform-repo/crates/core" }
+platform-challenge-sdk = { git = "https://github.com/PlatformNetwork/platform.git", rev = "c09cd79", features = ["http-server"] }
+platform-core = { git = "https://github.com/PlatformNetwork/platform.git", rev = "c09cd79" }
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
