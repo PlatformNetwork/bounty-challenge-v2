@@ -1,3 +1,20 @@
+1s
+Run docker/build-push-action@v6
+GitHub Actions runtime token ACs
+Docker info
+Proxy configuration
+Buildx version
+Builder info
+/usr/bin/docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --iidfile /home/runner/work/_temp/docker-actions-toolkit-Mp1XIq/build-iidfile-94498260a7.txt --label org.opencontainers.image.created=2026-01-18T23:44:31.053Z --label org.opencontainers.image.description=[🤝] bounty-challenge incentivizes bug discovery and software improvement through community-driven reports and suggestions, with rewards based on impact and quality. --label org.opencontainers.image.licenses=Apache-2.0 --label org.opencontainers.image.revision=bae82e6aa7ab8f664f6ea59fe7d04ae0b297350e --label org.opencontainers.image.source=https://github.com/PlatformNetwork/bounty-challenge --label org.opencontainers.image.title=bounty-challenge --label org.opencontainers.image.url=https://github.com/PlatformNetwork/bounty-challenge --label org.opencontainers.image.version=main --attest type=provenance,mode=max,builder-id=https://github.com/PlatformNetwork/bounty-challenge/actions/runs/21120652929/attempts/1 --tag ghcr.io/platformnetwork/bounty-challenge:main --tag ghcr.io/platformnetwork/bounty-challenge:latest --tag ghcr.io/platformnetwork/bounty-challenge:bae82e6 --metadata-file /home/runner/work/_temp/docker-actions-toolkit-Mp1XIq/build-metadata-62cc80043e.json --push .
+#0 building with "builder-f6ca9c34-e821-4e83-8515-ee5b9e02b840" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2B done
+#1 DONE 0.0s
+ERROR: failed to build: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
+Reference
+Check build summary support
+Error: buildx failed with: ERROR: failed to build: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
 # Bounty Challenge - Miner Guide
 
 Complete documentation for miners participating in the Bounty Challenge.
