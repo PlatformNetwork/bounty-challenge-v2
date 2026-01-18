@@ -169,6 +169,164 @@ impl BountyStorage {
         })?;
         Ok(count)
     }
+
+    // ========================================================================
+    // PENALTY SYSTEM
+    // ========================================================================
+
+    /// Record an invalid issue
+    pub fn record_invalid_issue(
+        &self,
+        issue_id: i64,
+        repo_owner: &str,
+        repo_name: &str,
+        github_username: &str,
+        issue_url: &str,
+        issue_title: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Create table if not exists
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invalid_issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id INTEGER NOT NULL,
+                repo_owner TEXT NOT NULL,
+                repo_name TEXT NOT NULL,
+                github_username TEXT NOT NULL,
+                miner_hotkey TEXT,
+                issue_url TEXT NOT NULL,
+                issue_title TEXT,
+                reason TEXT,
+                recorded_at TEXT NOT NULL,
+                UNIQUE(repo_owner, repo_name, issue_id)
+            )",
+            [],
+        )?;
+
+        // Look up miner hotkey
+        let hotkey: Option<String> = conn
+            .query_row(
+                "SELECT miner_hotkey FROM registrations WHERE LOWER(github_username) = LOWER(?1)",
+                [github_username],
+                |row| row.get(0),
+            )
+            .ok();
+
+        conn.execute(
+            "INSERT OR IGNORE INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, miner_hotkey, issue_url, issue_title, reason, recorded_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                issue_id,
+                repo_owner,
+                repo_name,
+                github_username.to_lowercase(),
+                hotkey,
+                issue_url,
+                issue_title,
+                reason,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Get invalid issues count for a hotkey
+    pub fn get_invalid_count(&self, hotkey: &str) -> Result<u32> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Check if table exists
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='invalid_issues'",
+                [],
+                |row| row.get::<_, i32>(0).map(|c| c > 0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(0);
+        }
+
+        let count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM invalid_issues WHERE miner_hotkey = ?1",
+                [hotkey],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        Ok(count)
+    }
+
+    /// Get total invalid issues count
+    pub fn get_total_invalid(&self) -> Result<u32> {
+        let conn = self.conn.lock().unwrap();
+        
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='invalid_issues'",
+                [],
+                |row| row.get::<_, i32>(0).map(|c| c > 0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(0);
+        }
+
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM invalid_issues", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        Ok(count)
+    }
+
+    /// Get count of penalized miners (invalid > valid)
+    pub fn get_penalized_count(&self) -> Result<u32> {
+        let conn = self.conn.lock().unwrap();
+        
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='invalid_issues'",
+                [],
+                |row| row.get::<_, i32>(0).map(|c| c > 0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(0);
+        }
+
+        // Count miners where invalid > valid
+        let count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM (
+                    SELECT miner_hotkey,
+                           COALESCE(valid_count, 0) as valid_count,
+                           COALESCE(invalid_count, 0) as invalid_count
+                    FROM (
+                        SELECT miner_hotkey, COUNT(*) as invalid_count
+                        FROM invalid_issues
+                        WHERE miner_hotkey IS NOT NULL
+                        GROUP BY miner_hotkey
+                    ) i
+                    LEFT JOIN (
+                        SELECT miner_hotkey, COUNT(*) as valid_count
+                        FROM validated_bounties
+                        GROUP BY miner_hotkey
+                    ) v USING (miner_hotkey)
+                    WHERE invalid_count > COALESCE(valid_count, 0)
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        Ok(count)
+    }
 }
 
 #[cfg(test)]

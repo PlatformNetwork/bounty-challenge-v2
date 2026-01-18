@@ -40,6 +40,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/register", post(register_handler))
         .route("/status/:hotkey", get(status_handler))
         .route("/stats", get(stats_handler))
+        // Penalty system endpoints
+        .route("/invalid", post(invalid_handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -281,6 +283,9 @@ pub struct StatusResponse {
     pub registered: bool,
     pub github_username: Option<String>,
     pub valid_issues_count: Option<u32>,
+    pub invalid_issues_count: Option<u32>,
+    pub balance: Option<i32>,
+    pub is_penalized: bool,
     pub weight: Option<f64>,
 }
 
@@ -296,6 +301,9 @@ async fn status_handler(
             registered: false,
             github_username: None,
             valid_issues_count: None,
+            invalid_issues_count: None,
+            balance: None,
+            is_penalized: false,
             weight: None,
         });
     }
@@ -303,14 +311,89 @@ async fn status_handler(
     // Get bounties for this miner
     let bounties = state.storage.get_miner_bounties(&hotkey).unwrap_or_default();
     let valid_count = bounties.len() as u32;
-    let weight = calculate_weight(valid_count);
+    
+    // Get invalid issues count (from storage if available, else 0)
+    let invalid_count = state.storage.get_invalid_count(&hotkey).unwrap_or(0);
+    let balance = valid_count as i32 - invalid_count as i32;
+    let is_penalized = balance < 0;
+    
+    // Weight is 0 if penalized
+    let weight = if is_penalized {
+        0.0
+    } else {
+        calculate_weight(valid_count)
+    };
 
     Json(StatusResponse {
         registered: true,
         github_username,
         valid_issues_count: Some(valid_count),
+        invalid_issues_count: Some(invalid_count),
+        balance: Some(balance),
+        is_penalized,
         weight: Some(weight),
     })
+}
+
+// ============================================================================
+// POST /invalid - Record an invalid issue (maintainers only)
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct InvalidIssueRequest {
+    pub issue_id: i64,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub github_username: String,
+    pub issue_url: String,
+    pub issue_title: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InvalidIssueResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+async fn invalid_handler(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<InvalidIssueRequest>,
+) -> Json<InvalidIssueResponse> {
+    // Record the invalid issue
+    match state.storage.record_invalid_issue(
+        request.issue_id,
+        &request.repo_owner,
+        &request.repo_name,
+        &request.github_username,
+        &request.issue_url,
+        request.issue_title.as_deref(),
+        request.reason.as_deref(),
+    ) {
+        Ok(()) => {
+            info!(
+                "Recorded invalid issue #{} by @{}",
+                request.issue_id, request.github_username
+            );
+            Json(InvalidIssueResponse {
+                success: true,
+                message: Some(format!(
+                    "Recorded invalid issue #{} by @{}",
+                    request.issue_id, request.github_username
+                )),
+                error: None,
+            })
+        }
+        Err(e) => {
+            error!("Failed to record invalid issue: {}", e);
+            Json(InvalidIssueResponse {
+                success: false,
+                message: None,
+                error: Some(format!("Failed to record invalid issue: {}", e)),
+            })
+        }
+    }
 }
 
 // ============================================================================
@@ -321,6 +404,8 @@ async fn status_handler(
 pub struct StatsResponse {
     pub total_bounties: u32,
     pub total_miners: usize,
+    pub total_invalid: u32,
+    pub penalized_miners: u32,
     pub challenge_id: String,
     pub version: String,
 }
@@ -328,10 +413,14 @@ pub struct StatsResponse {
 async fn stats_handler(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
     let total_bounties = state.storage.get_total_bounties().unwrap_or(0);
     let scores = state.storage.get_all_scores().unwrap_or_default();
+    let total_invalid = state.storage.get_total_invalid().unwrap_or(0);
+    let penalized_miners = state.storage.get_penalized_count().unwrap_or(0);
 
     Json(StatsResponse {
         total_bounties,
         total_miners: scores.len(),
+        total_invalid,
+        penalized_miners,
         challenge_id: "bounty-challenge".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })

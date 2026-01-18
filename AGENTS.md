@@ -162,8 +162,36 @@ For an issue to earn rewards, it must:
 flowchart LR
     A["Issue Created"] --> B["Review"] --> C{Valid?}
     C -->|Yes| D["✅ Reward"]
-    C -->|No| E["❌ No reward"]
+    C -->|No| E["❌ Penalty"]
 ```
+
+### Penalty System
+
+> **IMPORTANT**: Invalid issues count against you! Maintain a positive balance.
+
+**Rules:**
+- **Ratio 1:1**: 1 invalid issue allowed per valid issue
+- **Penalty**: If `invalid > valid`, your weight becomes 0
+- **Recovery**: Submit valid issues to restore balance >= 0
+
+**Balance Calculation:**
+```
+balance = valid_issues - invalid_issues
+
+If balance >= 0: weight = normal calculation
+If balance < 0:  weight = 0 (penalized)
+```
+
+**Examples:**
+
+| Miner | Valid | Invalid | Balance | Status |
+|-------|-------|---------|---------|--------|
+| A | 5 | 3 | +2 | ✅ OK |
+| B | 3 | 3 | 0 | ✅ OK |
+| C | 2 | 4 | -2 | ❌ Penalized |
+| D | 0 | 1 | -1 | ❌ Penalized |
+
+> Miner C needs 2 more valid issues to recover. Miner D needs 1.
 
 ### Label Protection
 

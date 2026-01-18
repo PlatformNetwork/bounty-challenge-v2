@@ -75,6 +75,32 @@ pub struct CurrentWeight {
     pub issues_resolved_24h: i32,
     pub total_issues_24h: i32,
     pub weight: f64,
+    #[serde(default)]
+    pub is_penalized: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvalidIssue {
+    pub id: i32,
+    pub issue_id: i64,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub github_username: String,
+    pub hotkey: Option<String>,
+    pub issue_url: String,
+    pub issue_title: Option<String>,
+    pub reason: Option<String>,
+    pub recorded_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserBalance {
+    pub hotkey: String,
+    pub github_username: String,
+    pub valid_count: i32,
+    pub invalid_count: i32,
+    pub balance: i32,
+    pub is_penalized: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +191,21 @@ impl PgStorage {
             let migration_sql = include_str!("../migrations/002_rewards_schema.sql");
             client.batch_execute(migration_sql).await?;
             info!("Applied migration 002_rewards_schema");
+        }
+
+        // Check for penalty system migration (version 3)
+        let has_penalty: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 3)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_penalty {
+            let migration_sql = include_str!("../migrations/003_penalty_system.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 003_penalty_system");
         }
 
         Ok(())
@@ -406,7 +447,8 @@ impl PgStorage {
 
         let rows = client
             .query(
-                "SELECT * FROM current_weights ORDER BY weight DESC",
+                "SELECT github_username, hotkey, issues_resolved_24h, total_issues_24h, weight::FLOAT8, is_penalized 
+                 FROM current_weights ORDER BY weight DESC",
                 &[],
             )
             .await?;
@@ -419,6 +461,7 @@ impl PgStorage {
                 issues_resolved_24h: r.get(2),
                 total_issues_24h: r.get(3),
                 weight: r.get(4),
+                is_penalized: r.get(5),
             })
             .collect())
     }
@@ -538,7 +581,7 @@ impl PgStorage {
 
         let rows = client
             .query(
-                "SELECT github_username, hotkey, issues_resolved_24h, total_issues_24h, weight::FLOAT8
+                "SELECT github_username, hotkey, issues_resolved_24h, total_issues_24h, weight::FLOAT8, is_penalized
                  FROM current_weights
                  ORDER BY weight DESC
                  LIMIT $1",
@@ -554,8 +597,131 @@ impl PgStorage {
                 issues_resolved_24h: r.get(2),
                 total_issues_24h: r.get(3),
                 weight: r.get(4),
+                is_penalized: r.get(5),
             })
             .collect())
+    }
+
+    // ========================================================================
+    // PENALTY SYSTEM
+    // ========================================================================
+
+    /// Record an invalid issue (closed without 'valid' label)
+    pub async fn record_invalid_issue(
+        &self,
+        issue_id: i64,
+        repo_owner: &str,
+        repo_name: &str,
+        github_username: &str,
+        issue_url: &str,
+        issue_title: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let client = self.pool.get().await?;
+
+        // Look up hotkey for this GitHub user
+        let hotkey = self.get_hotkey_by_github(github_username).await?;
+
+        client
+            .execute(
+                "INSERT INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (repo_owner, repo_name, issue_id) DO NOTHING",
+                &[
+                    &issue_id,
+                    &repo_owner,
+                    &repo_name,
+                    &github_username.to_lowercase(),
+                    &hotkey,
+                    &issue_url,
+                    &issue_title,
+                    &reason,
+                ],
+            )
+            .await?;
+
+        info!(
+            "Recorded invalid issue #{} from {}/{} by {}",
+            issue_id, repo_owner, repo_name, github_username
+        );
+        Ok(())
+    }
+
+    /// Get user balance (valid - invalid issues)
+    pub async fn get_user_balance(&self, hotkey: &str) -> Result<Option<UserBalance>> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_opt(
+                "SELECT hotkey, github_username, valid_count, invalid_count, balance, is_penalized
+                 FROM user_balance
+                 WHERE hotkey = $1",
+                &[&hotkey],
+            )
+            .await?;
+
+        Ok(row.map(|r| UserBalance {
+            hotkey: r.get(0),
+            github_username: r.get(1),
+            valid_count: r.get(2),
+            invalid_count: r.get(3),
+            balance: r.get(4),
+            is_penalized: r.get(5),
+        }))
+    }
+
+    /// Check if a hotkey is penalized
+    pub async fn is_penalized(&self, hotkey: &str) -> Result<bool> {
+        let balance = self.get_user_balance(hotkey).await?;
+        Ok(balance.map(|b| b.is_penalized).unwrap_or(false))
+    }
+
+    /// Get all invalid issues for a hotkey
+    pub async fn get_invalid_issues_for_hotkey(&self, hotkey: &str) -> Result<Vec<InvalidIssue>> {
+        let client = self.pool.get().await?;
+
+        let rows = client
+            .query(
+                "SELECT id, issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason, recorded_at
+                 FROM invalid_issues
+                 WHERE hotkey = $1
+                 ORDER BY recorded_at DESC",
+                &[&hotkey],
+            )
+            .await?;
+
+        Ok(rows
+            .iter()
+            .map(|r| InvalidIssue {
+                id: r.get(0),
+                issue_id: r.get(1),
+                repo_owner: r.get(2),
+                repo_name: r.get(3),
+                github_username: r.get(4),
+                hotkey: r.get(5),
+                issue_url: r.get(6),
+                issue_title: r.get(7),
+                reason: r.get(8),
+                recorded_at: r.get(9),
+            })
+            .collect())
+    }
+
+    /// Get penalty stats
+    pub async fn get_penalty_stats(&self) -> Result<(i32, i32)> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_one(
+                "SELECT 
+                    COUNT(*) FILTER (WHERE is_penalized = true) as penalized_count,
+                    COUNT(*) as total_users
+                 FROM user_balance",
+                &[],
+            )
+            .await?;
+
+        Ok((row.get::<_, i64>(0) as i32, row.get::<_, i64>(1) as i32))
     }
 }
 

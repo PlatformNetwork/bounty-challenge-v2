@@ -107,6 +107,29 @@ $$W_{user} = \min(n_{user} \times w_{issue}, W_{max})$$
 
 See [Scoring Documentation](docs/reference/scoring.md) for complete specifications.
 
+### Penalty System
+
+> **WARNING**: Invalid issues (closed without `valid` label) count against you!
+
+| Rule | Description |
+|------|-------------|
+| **Ratio 1:1** | 1 invalid issue allowed per valid issue |
+| **Penalty** | If `invalid > valid`, weight = 0 |
+| **Recovery** | Submit valid issues to return balance >= 0 |
+
+**Formula:**
+```
+balance = valid_issues - invalid_issues
+weight = balance >= 0 ? normal_weight : 0
+```
+
+**Example:**
+
+| Miner | Valid | Invalid | Balance | Weight |
+|-------|-------|---------|---------|--------|
+| A | 5 | 3 | +2 | 0.05 |
+| B | 3 | 5 | -2 | 0.00 (penalized) |
+
 ## Quick Start for Miners
 
 ### Prerequisites
