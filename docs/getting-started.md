@@ -14,7 +14,7 @@ This guide walks you through setting up Bounty Challenge and claiming your first
 
 ```bash
 # Clone the repository
-git clone https://github.com/CortexLM/bounty-challenge.git
+git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 
 # Build in release mode

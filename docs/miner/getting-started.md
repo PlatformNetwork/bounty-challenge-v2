@@ -14,7 +14,7 @@ This guide will help you set up and start earning rewards with Bounty Challenge.
 
 ```bash
 # Clone the repository
-git clone https://github.com/CortexLM/bounty-challenge.git
+git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 
 # Build in release mode
@@ -31,7 +31,7 @@ bounty --version
 
 ```bash
 # Download latest release (example for Linux x86_64)
-curl -LO https://github.com/CortexLM/bounty-challenge/releases/latest/download/bounty-linux-x86_64
+curl -LO https://github.com/PlatformNetwork/bounty-challenge/releases/latest/download/bounty-linux-x86_64
 
 # Make executable
 chmod +x bounty-linux-x86_64
@@ -65,7 +65,7 @@ The wizard will sign the registration and submit it to the platform.
 
 Go to the bounty-challenge repository:
 
-- **CortexLM/bounty-challenge**: https://github.com/CortexLM/bounty-challenge/issues
+- **PlatformNetwork/bounty-challenge**: https://github.com/PlatformNetwork/bounty-challenge/issues
 
 Create a quality issue about any Cortex project (bug report, feature request, etc.). Issues submitted to other repos (cortex, fabric) will NOT count for rewards.
 

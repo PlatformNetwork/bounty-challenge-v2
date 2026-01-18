@@ -21,7 +21,7 @@ Validators perform two key functions:
 
 ```bash
 # Clone repository
-git clone https://github.com/CortexLM/bounty-challenge.git
+git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 
 # Build release

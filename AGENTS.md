@@ -51,7 +51,7 @@ Complete documentation for miners participating in the Bounty Challenge.
 
 | Repository | Status |
 |------------|--------|
-| [CortexLM/bounty-challenge](https://github.com/CortexLM/bounty-challenge/issues) | ✅ Rewards eligible |
+| [PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues) | ✅ Rewards eligible |
 | CortexLM/cortex | ❌ Not counted for rewards |
 | CortexLM/fabric | ❌ Not counted for rewards |
 
@@ -130,7 +130,7 @@ The server verifies:
 
 ## Creating Valid Issues
 
-> **WARNING**: Issues must be submitted to [CortexLM/bounty-challenge](https://github.com/CortexLM/bounty-challenge/issues) to receive rewards. Issues in other repos will NOT be counted!
+> **WARNING**: Issues must be submitted to [PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues) to receive rewards. Issues in other repos will NOT be counted!
 
 ### Issue Requirements
 
@@ -291,7 +291,7 @@ $$W_{user} = \min(n_{user} \times w_{issue}, W_{max})$$
 
 ```bash
 # Clone and build
-git clone https://github.com/CortexLM/bounty-challenge.git
+git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 cargo build --release
 
@@ -498,5 +498,5 @@ Response:
 ## Support
 
 - **Documentation**: This file and `/docs/` directory
-- **Issues**: [GitHub Issues](https://github.com/CortexLM/bounty-challenge/issues)
+- **Issues**: [GitHub Issues](https://github.com/PlatformNetwork/bounty-challenge/issues)
 - **Discord**: [Cortex Foundation Discord](https://discord.gg/cortexfoundation)

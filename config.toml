@@ -7,7 +7,7 @@ client_id = "Ov23liAkfvnMhA6C68iy"
 # Target repository for bounties
 # IMPORTANT: Only issues in bounty-challenge count for rewards
 [[github.repos]]
-owner = "CortexLM"
+owner = "PlatformNetwork"
 repo = "bounty-challenge"
 
 [server]

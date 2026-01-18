@@ -5,7 +5,7 @@ edition = "2021"
 description = "Bounty Challenge - Reward miners for valid GitHub issues"
 authors = ["CortexLM"]
 license = "Apache-2.0"
-repository = "https://github.com/CortexLM/bounty-challenge"
+repository = "https://github.com/PlatformNetwork/bounty-challenge"
 
 [[bin]]
 name = "bounty-server"

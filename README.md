@@ -4,9 +4,9 @@
 
 **GitHub Issue Reward System for Cortex on Bittensor**
 
-[![CI](https://github.com/CortexLM/bounty-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/CortexLM/bounty-challenge/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/CortexLM/bounty-challenge)](https://github.com/CortexLM/bounty-challenge/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/CortexLM/bounty-challenge)](https://github.com/CortexLM/bounty-challenge/stargazers)
+[![CI](https://github.com/PlatformNetwork/bounty-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformNetwork/bounty-challenge/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/PlatformNetwork/bounty-challenge)](https://github.com/PlatformNetwork/bounty-challenge/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/PlatformNetwork/bounty-challenge)](https://github.com/PlatformNetwork/bounty-challenge/stargazers)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Bittensor](https://img.shields.io/badge/bittensor-subnet-green.svg)](https://bittensor.com/)
 
@@ -16,7 +16,7 @@
 
 Bounty Challenge is a decentralized issue reward system on the Bittensor network. Miners earn TAO rewards by discovering and reporting valid issues. Issues must be closed with the `valid` label by project maintainers to qualify for rewards.
 
-> **IMPORTANT**: To receive rewards, you MUST submit issues in **this repository** ([CortexLM/bounty-challenge](https://github.com/CortexLM/bounty-challenge/issues)). Issues submitted to other repositories (CortexLM/cortex, CortexLM/fabric, etc.) will **NOT** be counted for rewards.
+> **IMPORTANT**: To receive rewards, you MUST submit issues in **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)). Issues submitted to other repositories (CortexLM/cortex, CortexLM/fabric, etc.) will **NOT** be counted for rewards.
 
 ## Quick Links
 
@@ -58,7 +58,7 @@ Bounty Challenge is a decentralized issue reward system on the Bittensor network
 │                                                                              │
 │  Reward Flow:                                                                │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │  1. Miner creates issue on CortexLM/bounty-challenge (THIS REPO)    │  │
+│  │  1. Miner creates issue on PlatformNetwork/bounty-challenge (THIS REPO)    │  │
 │  │  2. Maintainers review → Close with "valid" label if legitimate     │  │
 │  │  3. Validators auto-scan and credit bounty to registered miner      │  │
 │  │  4. Weights calculated based on 24h activity (adaptive formula)     │  │
@@ -124,7 +124,7 @@ See [Scoring Documentation](docs/reference/scoring.md) for complete specificatio
 
 ```bash
 # Clone and build
-git clone https://github.com/CortexLM/bounty-challenge.git
+git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 cargo build --release
 
@@ -164,7 +164,7 @@ Go to the bounty-challenge repository and create issues:
 
 | Repository | URL |
 |------------|-----|
-| **CortexLM/bounty-challenge** | https://github.com/CortexLM/bounty-challenge/issues |
+| **PlatformNetwork/bounty-challenge** | https://github.com/PlatformNetwork/bounty-challenge/issues |
 
 You can report issues about any Cortex project (Cortex CLI, Fabric, etc.) but they must be submitted HERE to count for rewards.
 
@@ -224,7 +224,7 @@ bounty leaderboard
 
 | Repository | URL | Status |
 |------------|-----|--------|
-| **CortexLM/bounty-challenge** | https://github.com/CortexLM/bounty-challenge/issues | ✅ Rewards eligible |
+| **PlatformNetwork/bounty-challenge** | https://github.com/PlatformNetwork/bounty-challenge/issues | ✅ Rewards eligible |
 | CortexLM/cortex | https://github.com/CortexLM/cortex | ❌ Not counted |
 | CortexLM/fabric | https://github.com/CortexLM/fabric | ❌ Not counted |
 
