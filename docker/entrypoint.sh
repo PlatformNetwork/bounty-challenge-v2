@@ -19,10 +19,10 @@ if [ -n "$DATABASE_URL" ]; then
     exec /usr/local/bin/bounty-server
 else
     echo "[MODE] Validator mode (no DATABASE_URL)"
-    echo "[INFO] Container will stay alive for platform orchestration"
-    echo "[INFO] Set DATABASE_URL to enable server mode"
+    echo "[INFO] Starting health-only server for platform orchestration"
+    echo "[INFO] Set DATABASE_URL to enable full server mode"
     echo ""
     
-    # Keep container alive
-    exec sleep infinity
+    # Start health-only server for validator mode
+    exec /usr/local/bin/bounty-health-server
 fi

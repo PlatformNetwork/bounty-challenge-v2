@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "bounty"
 path = "src/bin/bounty/main.rs"
 
+[[bin]]
+name = "bounty-health-server"
+path = "src/bin/bounty-health-server.rs"
+
 [dependencies]
 # Platform SDK
 platform-challenge-sdk = { git = "https://github.com/PlatformNetwork/platform.git", rev = "c09cd79", features = ["http-server"] }

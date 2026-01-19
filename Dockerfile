@@ -38,8 +38,8 @@ COPY Cargo.toml Cargo.lock config.toml ./
 COPY src ./src
 COPY migrations ./migrations
 
-# Build release binary
-RUN cargo build --release --bin bounty-server
+# Build release binaries
+RUN cargo build --release --bin bounty-server --bin bounty-health-server
 
 # Stage 4: Runtime image
 FROM debian:12.12-slim
@@ -57,8 +57,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy binary from builder
+# Copy binaries from builder
 COPY --from=builder /build/target/release/bounty-server /usr/local/bin/
+COPY --from=builder /build/target/release/bounty-health-server /usr/local/bin/
 
 # Copy entrypoint and MOTD
 COPY docker/entrypoint.sh /entrypoint.sh
