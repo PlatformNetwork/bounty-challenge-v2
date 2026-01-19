@@ -1078,10 +1078,31 @@ impl PgStorage {
             LabelChange::None
         };
 
-        // Log significant changes and auto-credit valid issues
+        // Log significant changes and auto-credit/debit issues
         match &change {
             LabelChange::BecameInvalid => {
-                info!("Issue #{} in {}/{} marked as INVALID", issue.number, repo_owner, repo_name);
+                // Record invalid issue (-1 point penalty)
+                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
+                
+                client
+                    .execute(
+                        "INSERT INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Marked as invalid')
+                         ON CONFLICT (repo_owner, repo_name, issue_id) DO NOTHING",
+                        &[
+                            &(issue.number as i64),
+                            &repo_owner,
+                            &repo_name,
+                            &issue.user.login.to_lowercase(),
+                            &hotkey,
+                            &issue.html_url,
+                            &issue.title,
+                        ],
+                    )
+                    .await?;
+                
+                warn!("Issue #{} in {}/{} marked as INVALID - recorded penalty for @{}", 
+                      issue.number, repo_owner, repo_name, issue.user.login);
             }
             LabelChange::LostValid => {
                 warn!("Issue #{} in {}/{} LOST valid label", issue.number, repo_owner, repo_name);
