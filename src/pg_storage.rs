@@ -931,8 +931,8 @@ impl PgStorage {
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE state = 'open') as open_count,
                     COUNT(*) FILTER (WHERE state = 'closed') as closed_count,
-                    COUNT(*) FILTER (WHERE state = 'closed' AND 'valid' = ANY(labels)) as valid_count,
-                    COUNT(*) FILTER (WHERE state = 'closed' AND 'invalid' = ANY(labels)) as invalid_count,
+                    COUNT(*) FILTER (WHERE 'valid' = ANY(labels)) as valid_count,
+                    COUNT(*) FILTER (WHERE 'invalid' = ANY(labels)) as invalid_count,
                     COUNT(*) FILTER (WHERE state = 'closed' AND NOT 'valid' = ANY(labels) AND NOT 'invalid' = ANY(labels)) as pending_count
                  FROM github_issues",
                 &[],
@@ -1036,8 +1036,8 @@ impl PgStorage {
             .query_one(
                 "SELECT 
                     COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE state = 'closed' AND 'valid' = ANY(labels)) as valid_count,
-                    COUNT(*) FILTER (WHERE state = 'closed' AND 'invalid' = ANY(labels)) as invalid_count,
+                    COUNT(*) FILTER (WHERE 'valid' = ANY(labels)) as valid_count,
+                    COUNT(*) FILTER (WHERE 'invalid' = ANY(labels)) as invalid_count,
                     COUNT(*) FILTER (WHERE state = 'open') as open_count
                  FROM github_issues 
                  WHERE LOWER(github_username) = LOWER($1)",

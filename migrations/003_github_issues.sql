@@ -45,10 +45,10 @@ CREATE TABLE IF NOT EXISTS github_sync_state (
 -- VIEWS FOR COMMON QUERIES
 -- ============================================================================
 
--- Valid issues (closed with 'valid' label)
+-- Valid issues (any issue with 'valid' label, open or closed)
 CREATE OR REPLACE VIEW valid_issues AS
 SELECT * FROM github_issues 
-WHERE state = 'closed' AND 'valid' = ANY(labels);
+WHERE 'valid' = ANY(labels);
 
 -- Invalid issues (closed with 'invalid' label)
 CREATE OR REPLACE VIEW invalid_issues_view AS
