@@ -215,41 +215,37 @@ fn enter_miner_key() -> Result<(sr25519::Pair, String)> {
 
 fn parse_miner_key(key: &str) -> Result<(sr25519::Pair, String)> {
     let key = key.trim();
-    let pair: sr25519::Pair;
-
-    // Try hex seed (64 chars = 32 bytes)
-    if key.len() == 64 && key.chars().all(|c| c.is_ascii_hexdigit()) {
-        let bytes = hex::decode(key)?;
-        if bytes.len() == 32 {
-            let mut seed = [0u8; 32];
-            seed.copy_from_slice(&bytes);
-            pair = sr25519::Pair::from_seed(&seed);
-        } else {
-            anyhow::bail!("Invalid hex key length");
+    let key = key.strip_prefix("0x").unwrap_or(key);
+    
+    // Try hex seed first (64 chars = 32 bytes)
+    if key.len() == 64 {
+        if let Ok(bytes) = hex::decode(key) {
+            if bytes.len() == 32 {
+                let mut seed = [0u8; 32];
+                seed.copy_from_slice(&bytes);
+                let pair = sr25519::Pair::from_seed(&seed);
+                let hotkey_ss58 = encode_ss58(&pair.public().0);
+                return Ok((pair, hotkey_ss58));
+            }
         }
     }
-    // Try mnemonic (12+ words)
-    else if key.split_whitespace().count() >= 12 {
-        pair = sr25519::Pair::from_phrase(key, None)
-            .map_err(|e| anyhow::anyhow!("Invalid mnemonic: {:?}", e))?
-            .0;
-    }
-    // Try SURI format (//path derivation)
-    else if key.starts_with("//") || key.contains("//") {
-        pair = sr25519::Pair::from_string(key, None)
-            .map_err(|e| anyhow::anyhow!("Invalid SURI: {:?}", e))?;
-    }
-    else {
-        anyhow::bail!(
-            "Invalid key format. Expected:\n  - 64-char hex seed\n  - 12+ word mnemonic\n  - SURI (e.g., //Alice)"
-        );
+
+    // Try SURI format (supports derivation paths like "mnemonic//hard/soft")
+    // This is the most flexible format used by subkey and substrate tools
+    if let Ok((pair, _)) = sr25519::Pair::from_string_with_seed(key, None) {
+        let hotkey_ss58 = encode_ss58(&pair.public().0);
+        return Ok((pair, hotkey_ss58));
     }
 
-    // Convert public key to SS58
-    let public = pair.public();
-    let hotkey_ss58 = encode_ss58(&public.0);
+    // Try mnemonic phrase without derivation
+    if let Ok((pair, _)) = sr25519::Pair::from_phrase(key, None) {
+        let hotkey_ss58 = encode_ss58(&pair.public().0);
+        return Ok((pair, hotkey_ss58));
+    }
 
-    Ok((pair, hotkey_ss58))
+    anyhow::bail!(
+        "Invalid key format. Expected:\n  - 64-char hex seed\n  - 12+ word mnemonic\n  - SURI (e.g., //Alice)"
+    );
 }
 
 /// Encode bytes to SS58 format with Bittensor prefix
