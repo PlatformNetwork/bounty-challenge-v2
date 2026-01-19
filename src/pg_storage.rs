@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use deadpool_postgres::{Config, Pool, Runtime};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::NoTls;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Maximum emission rate: 250 issues per day = full weight
 pub const MAX_ISSUES_FOR_FULL_EMISSION: i32 = 250;
@@ -780,12 +780,56 @@ impl PgStorage {
         Ok(())
     }
 
-    /// Upsert a GitHub issue
-    pub async fn upsert_issue(&self, issue: &crate::github::GitHubIssue, repo_owner: &str, repo_name: &str) -> Result<()> {
+    /// Upsert a GitHub issue and detect label changes
+    pub async fn upsert_issue(&self, issue: &crate::github::GitHubIssue, repo_owner: &str, repo_name: &str) -> Result<LabelChange> {
         let client = self.pool.get().await?;
 
-        let labels: Vec<String> = issue.label_names();
+        let new_labels: Vec<String> = issue.label_names();
+        let has_valid = new_labels.contains(&"valid".to_string());
+        let has_invalid = new_labels.contains(&"invalid".to_string());
 
+        // Check previous labels
+        let prev_row = client
+            .query_opt(
+                "SELECT labels FROM github_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                &[&repo_owner, &repo_name, &(issue.number as i64)],
+            )
+            .await?;
+
+        let (had_valid, had_invalid) = match prev_row {
+            Some(r) => {
+                let prev_labels: Vec<String> = r.get(0);
+                (prev_labels.contains(&"valid".to_string()), prev_labels.contains(&"invalid".to_string()))
+            }
+            None => (false, false),
+        };
+
+        // Detect changes
+        let change = if has_invalid && !had_invalid {
+            LabelChange::BecameInvalid
+        } else if had_valid && !has_valid {
+            LabelChange::LostValid
+        } else if has_valid && !had_valid {
+            LabelChange::BecameValid
+        } else {
+            LabelChange::None
+        };
+
+        // Log significant changes
+        match &change {
+            LabelChange::BecameInvalid => {
+                info!("Issue #{} in {}/{} marked as INVALID", issue.number, repo_owner, repo_name);
+            }
+            LabelChange::LostValid => {
+                warn!("Issue #{} in {}/{} LOST valid label", issue.number, repo_owner, repo_name);
+            }
+            LabelChange::BecameValid => {
+                info!("Issue #{} in {}/{} marked as VALID", issue.number, repo_owner, repo_name);
+            }
+            LabelChange::None => {}
+        }
+
+        // Upsert the issue
         client
             .execute(
                 "INSERT INTO github_issues (
@@ -808,7 +852,7 @@ impl PgStorage {
                     &issue.title,
                     &issue.body,
                     &issue.state,
-                    &labels,
+                    &new_labels,
                     &issue.created_at,
                     &issue.updated_at,
                     &issue.closed_at,
@@ -817,7 +861,7 @@ impl PgStorage {
             )
             .await?;
 
-        Ok(())
+        Ok(change)
     }
 
     /// Get all issues with optional filters
@@ -1184,6 +1228,15 @@ pub struct SyncStatus {
 // ============================================================================
 // WEIGHT CALCULATION (standalone function)
 // ============================================================================
+
+/// Label change detection result
+#[derive(Debug, Clone, PartialEq)]
+pub enum LabelChange {
+    None,
+    BecameValid,
+    BecameInvalid,
+    LostValid,
+}
 
 /// Calculate weight for a user based on their issues and total issues in 24h
 /// 
