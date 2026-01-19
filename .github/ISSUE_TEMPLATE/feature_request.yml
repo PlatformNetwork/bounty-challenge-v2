@@ -9,6 +9,17 @@ body:
         ## Feature Request
         Thank you for suggesting a feature! Please describe your idea below.
 
+  - type: dropdown
+    id: project
+    attributes:
+      label: Project
+      description: Which project would this feature affect?
+      options:
+        - cortex
+        - vgrep
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
@@ -46,17 +57,6 @@ body:
       placeholder: Describe alternatives...
     validations:
       required: false
-
-  - type: dropdown
-    id: project
-    attributes:
-      label: Project
-      description: Which project would this feature affect?
-      options:
-        - cortex
-        - vgrep
-    validations:
-      required: true
 
   - type: dropdown
     id: impact

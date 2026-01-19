@@ -9,6 +9,17 @@ body:
         ## Performance Issue
         Report slow performance, high resource usage, or optimization opportunities.
 
+  - type: dropdown
+    id: project
+    attributes:
+      label: Project
+      description: Which project is affected?
+      options:
+        - cortex
+        - vgrep
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:

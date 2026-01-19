@@ -9,6 +9,17 @@ body:
         ## Bug Report
         Thank you for taking the time to report a bug. Please fill out the information below.
 
+  - type: dropdown
+    id: project
+    attributes:
+      label: Project
+      description: Which project is affected?
+      options:
+        - cortex
+        - vgrep
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
@@ -96,17 +107,6 @@ body:
       label: Actual Behavior
       description: What actually happened.
       placeholder: Describe actual behavior...
-    validations:
-      required: true
-
-  - type: dropdown
-    id: project
-    attributes:
-      label: Project
-      description: Which project is affected?
-      options:
-        - cortex
-        - vgrep
     validations:
       required: true
 
