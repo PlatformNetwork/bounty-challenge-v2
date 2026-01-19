@@ -80,6 +80,17 @@ pub struct CurrentWeight {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderboardEntry {
+    pub github_username: String,
+    pub hotkey: Option<String>,
+    pub valid_issues: i32,
+    pub pending_issues: i32,
+    pub weight: f64,
+    pub is_penalized: bool,
+    pub last_activity: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidIssue {
     pub id: i32,
     pub issue_id: i64,
@@ -677,6 +688,70 @@ impl PgStorage {
         }
 
         Ok(map)
+    }
+
+    /// Get extended leaderboard including users with pending issues
+    pub async fn get_extended_leaderboard(&self, limit: i32) -> Result<Vec<LeaderboardEntry>> {
+        let client = self.pool.get().await?;
+
+        // Get all users from registrations, their valid issues, pending issues, and weights
+        let rows = client
+            .query(
+                "WITH user_valid AS (
+                    SELECT 
+                        LOWER(github_username) as username,
+                        COUNT(*) as valid_count,
+                        MAX(resolved_at) as last_valid
+                    FROM resolved_issues
+                    WHERE resolved_at >= NOW() - INTERVAL '24 hours'
+                    GROUP BY LOWER(github_username)
+                ),
+                user_pending AS (
+                    SELECT 
+                        LOWER(github_username) as username,
+                        COUNT(*) as pending_count,
+                        MAX(updated_at) as last_pending
+                    FROM github_issues
+                    WHERE state = 'open'
+                      AND NOT 'valid' = ANY(labels)
+                      AND NOT 'invalid' = ANY(labels)
+                    GROUP BY LOWER(github_username)
+                ),
+                user_weights AS (
+                    SELECT github_username, hotkey, weight, is_penalized
+                    FROM current_weights
+                )
+                SELECT 
+                    COALESCE(r.github_username, uv.username, up.username) as github_username,
+                    r.hotkey,
+                    COALESCE(uv.valid_count, 0)::INTEGER as valid_issues,
+                    COALESCE(up.pending_count, 0)::INTEGER as pending_issues,
+                    COALESCE(uw.weight, 0.0)::FLOAT8 as weight,
+                    COALESCE(uw.is_penalized, false) as is_penalized,
+                    GREATEST(uv.last_valid, up.last_pending) as last_activity
+                FROM github_registrations r
+                FULL OUTER JOIN user_valid uv ON LOWER(r.github_username) = uv.username
+                FULL OUTER JOIN user_pending up ON LOWER(r.github_username) = up.username
+                LEFT JOIN user_weights uw ON LOWER(r.github_username) = LOWER(uw.github_username)
+                WHERE COALESCE(uv.valid_count, 0) > 0 OR COALESCE(up.pending_count, 0) > 0
+                ORDER BY weight DESC, last_activity DESC NULLS LAST
+                LIMIT $1",
+                &[&(limit as i64)],
+            )
+            .await?;
+
+        Ok(rows
+            .iter()
+            .map(|r| LeaderboardEntry {
+                github_username: r.get(0),
+                hotkey: r.get(1),
+                valid_issues: r.get(2),
+                pending_issues: r.get(3),
+                weight: r.get(4),
+                is_penalized: r.get(5),
+                last_activity: r.get(6),
+            })
+            .collect())
     }
 
     // ========================================================================

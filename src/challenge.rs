@@ -209,33 +209,24 @@ impl BountyChallenge {
     }
 
     pub async fn get_leaderboard(&self) -> Result<Vec<serde_json::Value>, ChallengeError> {
-        let weights = self
+        // Get extended leaderboard (includes users with pending issues)
+        let entries = self
             .storage
-            .get_leaderboard(100)
+            .get_extended_leaderboard(100)
             .await
             .map_err(|e| ChallengeError::Internal(e.to_string()))?;
 
-        // Get pending issues count for all users
-        let pending_map = self
-            .storage
-            .get_all_users_pending()
-            .await
-            .unwrap_or_default();
-
-        let leaderboard: Vec<_> = weights
+        let leaderboard: Vec<_> = entries
             .into_iter()
-            .map(|w| {
-                let pending = pending_map
-                    .get(&w.github_username.to_lowercase())
-                    .copied()
-                    .unwrap_or(0);
+            .map(|e| {
                 json!({
-                    "miner_hotkey": w.hotkey,
-                    "github_username": w.github_username,
-                    "valid_issues": w.issues_resolved_24h,
-                    "pending_issues": pending,
-                    "weight": w.weight,
-                    "is_penalized": w.is_penalized,
+                    "miner_hotkey": e.hotkey,
+                    "github_username": e.github_username,
+                    "valid_issues": e.valid_issues,
+                    "pending_issues": e.pending_issues,
+                    "weight": e.weight,
+                    "is_penalized": e.is_penalized,
+                    "last_activity": e.last_activity,
                 })
             })
             .collect();
