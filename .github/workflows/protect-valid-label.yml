@@ -1,4 +1,4 @@
-name: Protect Valid Label
+name: Protect Labels
 
 on:
   issues:
@@ -6,7 +6,8 @@ on:
 
 jobs:
   protect-label:
-    if: github.event.label.name == 'valid'
+    # Protect: valid, cortex, vgrep, term-challenge, bounty-challenge
+    if: contains(fromJson('["valid", "cortex", "vgrep", "term-challenge", "bounty-challenge"]'), github.event.label.name)
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -17,9 +18,13 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // List of users allowed to manage the 'valid' label
+            // Protected labels that affect rewards
+            const PROTECTED_LABELS = ['valid', 'cortex', 'vgrep', 'term-challenge', 'bounty-challenge'];
+            
+            // List of users allowed to manage protected labels
             // Add maintainer usernames here
             const ALLOWED_USERS = [
+              'echobt',
               'cortex-admin',
               'maintainer1',
               'maintainer2'
@@ -57,7 +62,8 @@ jobs:
             }
             
             // Unauthorized - revert the label change
-            console.log(`❌ ${actor} is NOT authorized to modify the 'valid' label`);
+            const labelName = context.payload.label.name;
+            console.log(`❌ ${actor} is NOT authorized to modify the '${labelName}' label`);
             
             if (eventAction === 'labeled') {
               // Remove the label that was just added
@@ -65,18 +71,18 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                name: 'valid'
+                name: labelName
               });
-              console.log(`Removed 'valid' label from issue #${issueNumber}`);
+              console.log(`Removed '${labelName}' label from issue #${issueNumber}`);
             } else if (eventAction === 'unlabeled') {
               // Re-add the label that was just removed
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                labels: ['valid']
+                labels: [labelName]
               });
-              console.log(`Re-added 'valid' label to issue #${issueNumber}`);
+              console.log(`Re-added '${labelName}' label to issue #${issueNumber}`);
             }
             
             // Add a comment explaining the revert
@@ -84,7 +90,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: `⚠️ **Label Protection**: The \`valid\` label can only be modified by authorized maintainers. Your change has been reverted.\n\nIf you believe this issue should have the \`valid\` label, please contact a maintainer.`
+              body: `⚠️ **Label Protection**: The \`${labelName}\` label can only be modified by authorized maintainers. Your change has been reverted.\n\nProtected labels: \`valid\`, \`cortex\`, \`vgrep\`, \`term-challenge\`, \`bounty-challenge\``
             });
             
             core.setFailed(`Unauthorized label modification by ${actor}`);

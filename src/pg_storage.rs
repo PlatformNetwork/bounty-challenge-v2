@@ -352,6 +352,29 @@ impl PgStorage {
         Ok(row.map(|r| r.get::<_, f32>(0) as f64).unwrap_or(1.0))
     }
 
+    /// Get multiplier from project tag (cortex, vgrep, etc.)
+    /// Returns the multiplier for the first matching project tag found in labels
+    pub async fn get_tag_multiplier(&self, labels: &[String]) -> Result<f64> {
+        let client = self.pool.get().await?;
+
+        // Check each label against project_tags
+        for label in labels {
+            let row = client
+                .query_opt(
+                    "SELECT multiplier FROM project_tags WHERE tag = $1 AND active = true",
+                    &[&label.to_lowercase()],
+                )
+                .await?;
+
+            if let Some(r) = row {
+                return Ok(r.get::<_, f32>(0) as f64);
+            }
+        }
+
+        // Default multiplier if no project tag found
+        Ok(1.0)
+    }
+
     // ========================================================================
     // RESOLVED ISSUES
     // ========================================================================
@@ -1080,13 +1103,19 @@ impl PgStorage {
                 warn!("Issue #{} in {}/{} LOST valid label", issue.number, repo_owner, repo_name);
             }
             LabelChange::BecameValid => {
-                // Get repo multiplier for weighted rewards
-                let multiplier = self.get_repo_multiplier(repo_owner, repo_name).await.unwrap_or(1.0);
+                // Get multiplier from project tag (cortex, vgrep, etc.)
+                let multiplier = self.get_tag_multiplier(&new_labels).await.unwrap_or(1.0);
                 
-                info!("Issue #{} in {}/{} marked as VALID - auto-crediting to user @{} ({}x)", 
-                      issue.number, repo_owner, repo_name, issue.user.login, multiplier);
+                // Find the project tag for logging
+                let project_tag = new_labels.iter()
+                    .find(|l| ["cortex", "vgrep", "term-challenge", "bounty-challenge"].contains(&l.to_lowercase().as_str()))
+                    .map(|s| s.as_str())
+                    .unwrap_or("unknown");
                 
-                // Auto-credit: add to resolved_issues with multiplier
+                info!("Issue #{} in {}/{} marked as VALID - auto-crediting to user @{} (tag={}, {}x)", 
+                      issue.number, repo_owner, repo_name, issue.user.login, project_tag, multiplier);
+                
+                // Auto-credit: add to resolved_issues with tag-based multiplier
                 let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
                 let resolved_at = issue.closed_at.unwrap_or(issue.updated_at);
                 
