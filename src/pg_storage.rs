@@ -811,11 +811,26 @@ impl PgStorage {
             LabelChange::LostValid
         } else if has_valid && !had_valid {
             LabelChange::BecameValid
+        } else if has_valid && had_valid {
+            // Already valid - check if already credited
+            let already_credited = client
+                .query_opt(
+                    "SELECT 1 FROM resolved_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                    &[&repo_owner, &repo_name, &(issue.number as i64)],
+                )
+                .await?
+                .is_some();
+            
+            if !already_credited {
+                LabelChange::BecameValid // Treat as new valid to trigger credit
+            } else {
+                LabelChange::None
+            }
         } else {
             LabelChange::None
         };
 
-        // Log significant changes
+        // Log significant changes and auto-credit valid issues
         match &change {
             LabelChange::BecameInvalid => {
                 info!("Issue #{} in {}/{} marked as INVALID", issue.number, repo_owner, repo_name);
@@ -824,7 +839,30 @@ impl PgStorage {
                 warn!("Issue #{} in {}/{} LOST valid label", issue.number, repo_owner, repo_name);
             }
             LabelChange::BecameValid => {
-                info!("Issue #{} in {}/{} marked as VALID", issue.number, repo_owner, repo_name);
+                info!("Issue #{} in {}/{} marked as VALID - auto-crediting to user @{}", 
+                      issue.number, repo_owner, repo_name, issue.user.login);
+                
+                // Auto-credit: add to resolved_issues
+                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
+                let resolved_at = issue.closed_at.unwrap_or(issue.updated_at);
+                
+                client
+                    .execute(
+                        "INSERT INTO resolved_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, resolved_at, weight_attributed)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0.01)
+                         ON CONFLICT (repo_owner, repo_name, issue_id) DO NOTHING",
+                        &[
+                            &(issue.number as i64),
+                            &repo_owner,
+                            &repo_name,
+                            &issue.user.login.to_lowercase(),
+                            &hotkey,
+                            &issue.html_url,
+                            &issue.title,
+                            &resolved_at,
+                        ],
+                    )
+                    .await?;
             }
             LabelChange::None => {}
         }
