@@ -42,6 +42,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/stats", get(stats_handler))
         // Penalty system endpoints
         .route("/invalid", post(invalid_handler))
+        // Issues API (cached from GitHub)
+        .route("/issues", get(issues_handler))
+        .route("/issues/pending", get(pending_issues_handler))
+        .route("/issues/stats", get(issues_stats_handler))
+        .route("/hotkey/:hotkey", get(hotkey_details_handler))
+        .route("/github/:username", get(github_user_handler))
+        .route("/sync/status", get(sync_status_handler))
+        .route("/sync/trigger", post(trigger_sync_handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -422,6 +430,170 @@ async fn stats_handler(State(state): State<Arc<AppState>>) -> Json<StatsResponse
         challenge_id: "bounty-challenge".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
+}
+
+// ============================================================================
+// ISSUES API (cached from GitHub)
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct IssuesQuery {
+    pub state: Option<String>,
+    pub label: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+async fn issues_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<IssuesQuery>,
+) -> Json<serde_json::Value> {
+    let limit = query.limit.unwrap_or(50).min(200);
+    let offset = query.offset.unwrap_or(0);
+
+    match state.storage.get_issues(
+        query.state.as_deref(),
+        query.label.as_deref(),
+        limit,
+        offset,
+    ).await {
+        Ok(issues) => Json(serde_json::json!({
+            "issues": issues,
+            "count": issues.len(),
+            "limit": limit,
+            "offset": offset
+        })),
+        Err(e) => {
+            error!("Failed to get issues: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn pending_issues_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<IssuesQuery>,
+) -> Json<serde_json::Value> {
+    let limit = query.limit.unwrap_or(50).min(200);
+    let offset = query.offset.unwrap_or(0);
+
+    match state.storage.get_pending_issues(limit, offset).await {
+        Ok(issues) => Json(serde_json::json!({
+            "issues": issues,
+            "count": issues.len(),
+            "limit": limit,
+            "offset": offset
+        })),
+        Err(e) => {
+            error!("Failed to get pending issues: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn issues_stats_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    match state.storage.get_issues_stats().await {
+        Ok(stats) => Json(serde_json::to_value(stats).unwrap()),
+        Err(e) => {
+            error!("Failed to get issues stats: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn hotkey_details_handler(
+    State(state): State<Arc<AppState>>,
+    Path(hotkey): Path<String>,
+) -> Json<serde_json::Value> {
+    match state.storage.get_hotkey_details(&hotkey).await {
+        Ok(Some(details)) => Json(serde_json::to_value(details).unwrap()),
+        Ok(None) => Json(serde_json::json!({ "error": "Hotkey not found" })),
+        Err(e) => {
+            error!("Failed to get hotkey details: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn github_user_handler(
+    State(state): State<Arc<AppState>>,
+    Path(username): Path<String>,
+) -> Json<serde_json::Value> {
+    match state.storage.get_github_user_details(&username).await {
+        Ok(Some(details)) => Json(serde_json::to_value(details).unwrap()),
+        Ok(None) => Json(serde_json::json!({ "error": "GitHub user not found" })),
+        Err(e) => {
+            error!("Failed to get GitHub user details: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn sync_status_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    match state.storage.get_sync_status().await {
+        Ok(status) => Json(serde_json::json!({
+            "repos": status,
+            "issues_stats": state.storage.get_issues_stats().await.ok()
+        })),
+        Err(e) => {
+            error!("Failed to get sync status: {}", e);
+            Json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+async fn trigger_sync_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    // Get target repos
+    let repos = match state.storage.get_active_repos().await {
+        Ok(r) => r,
+        Err(e) => return Json(serde_json::json!({ "error": e.to_string() })),
+    };
+
+    let mut synced = 0;
+    let mut errors = Vec::new();
+
+    for repo in repos {
+        match sync_repo(&state.storage, &repo.owner, &repo.repo).await {
+            Ok(count) => {
+                synced += count;
+                info!("Synced {} issues from {}/{}", count, repo.owner, repo.repo);
+            }
+            Err(e) => {
+                error!("Failed to sync {}/{}: {}", repo.owner, repo.repo, e);
+                errors.push(format!("{}/{}: {}", repo.owner, repo.repo, e));
+            }
+        }
+    }
+
+    Json(serde_json::json!({
+        "success": errors.is_empty(),
+        "issues_synced": synced,
+        "errors": errors
+    }))
+}
+
+/// Sync issues from a single repo
+pub async fn sync_repo(storage: &PgStorage, owner: &str, repo: &str) -> anyhow::Result<i32> {
+    let github = crate::github::GitHubClient::new(owner, repo);
+    
+    // Get last sync time
+    let since = storage.get_last_sync(owner, repo).await?;
+    
+    info!("Syncing {}/{} since {:?}", owner, repo, since);
+    
+    // Fetch issues from GitHub
+    let issues = github.get_all_issues_since(since).await?;
+    let count = issues.len() as i32;
+    
+    // Upsert each issue
+    for issue in &issues {
+        storage.upsert_issue(issue, owner, repo).await?;
+    }
+    
+    // Update sync state
+    storage.update_sync_state(owner, repo, count).await?;
+    
+    Ok(count)
 }
 
 /// Run the server

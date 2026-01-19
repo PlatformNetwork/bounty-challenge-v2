@@ -208,6 +208,21 @@ impl PgStorage {
             info!("Applied migration 002_penalty");
         }
 
+        // Check for github issues migration (version 4)
+        let has_issues: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 4)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_issues {
+            let migration_sql = include_str!("../migrations/003_github_issues.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 003_github_issues");
+        }
+
         Ok(())
     }
 
@@ -723,6 +738,447 @@ impl PgStorage {
 
         Ok((row.get::<_, i64>(0) as i32, row.get::<_, i64>(1) as i32))
     }
+
+    // ========================================================================
+    // GITHUB ISSUES SYNC & CACHE
+    // ========================================================================
+
+    /// Get last sync time for a repo
+    pub async fn get_last_sync(&self, repo_owner: &str, repo_name: &str) -> Result<Option<DateTime<Utc>>> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_opt(
+                "SELECT last_issue_updated_at FROM github_sync_state 
+                 WHERE repo_owner = $1 AND repo_name = $2",
+                &[&repo_owner, &repo_name],
+            )
+            .await?;
+
+        Ok(row.and_then(|r| r.get(0)))
+    }
+
+    /// Update sync state for a repo
+    pub async fn update_sync_state(&self, repo_owner: &str, repo_name: &str, issues_synced: i32) -> Result<()> {
+        let client = self.pool.get().await?;
+
+        client
+            .execute(
+                "INSERT INTO github_sync_state (repo_owner, repo_name, last_sync_at, issues_synced)
+                 VALUES ($1, $2, NOW(), $3)
+                 ON CONFLICT (repo_owner, repo_name) DO UPDATE SET
+                    last_sync_at = NOW(),
+                    issues_synced = github_sync_state.issues_synced + $3,
+                    last_issue_updated_at = (
+                        SELECT MAX(updated_at) FROM github_issues 
+                        WHERE repo_owner = $1 AND repo_name = $2
+                    )",
+                &[&repo_owner, &repo_name, &issues_synced],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Upsert a GitHub issue
+    pub async fn upsert_issue(&self, issue: &crate::github::GitHubIssue, repo_owner: &str, repo_name: &str) -> Result<()> {
+        let client = self.pool.get().await?;
+
+        let labels: Vec<String> = issue.label_names();
+
+        client
+            .execute(
+                "INSERT INTO github_issues (
+                    issue_id, repo_owner, repo_name, github_username, title, body,
+                    state, labels, created_at, updated_at, closed_at, issue_url, synced_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+                ON CONFLICT (repo_owner, repo_name, issue_id) DO UPDATE SET
+                    title = $5,
+                    body = $6,
+                    state = $7,
+                    labels = $8,
+                    updated_at = $10,
+                    closed_at = $11,
+                    synced_at = NOW()",
+                &[
+                    &(issue.number as i64),
+                    &repo_owner,
+                    &repo_name,
+                    &issue.user.login,
+                    &issue.title,
+                    &issue.body,
+                    &issue.state,
+                    &labels,
+                    &issue.created_at,
+                    &issue.updated_at,
+                    &issue.closed_at,
+                    &issue.html_url,
+                ],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get all issues with optional filters
+    pub async fn get_issues(
+        &self,
+        state: Option<&str>,
+        label: Option<&str>,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<CachedIssue>> {
+        let client = self.pool.get().await?;
+
+        let query = match (state, label) {
+            (Some(s), Some(l)) => {
+                client.query(
+                    "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
+                            created_at, updated_at, closed_at, issue_url
+                     FROM github_issues 
+                     WHERE state = $1 AND $2 = ANY(labels)
+                     ORDER BY updated_at DESC
+                     LIMIT $3 OFFSET $4",
+                    &[&s, &l, &limit, &offset],
+                ).await?
+            }
+            (Some(s), None) => {
+                client.query(
+                    "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
+                            created_at, updated_at, closed_at, issue_url
+                     FROM github_issues 
+                     WHERE state = $1
+                     ORDER BY updated_at DESC
+                     LIMIT $2 OFFSET $3",
+                    &[&s, &limit, &offset],
+                ).await?
+            }
+            (None, Some(l)) => {
+                client.query(
+                    "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
+                            created_at, updated_at, closed_at, issue_url
+                     FROM github_issues 
+                     WHERE $1 = ANY(labels)
+                     ORDER BY updated_at DESC
+                     LIMIT $2 OFFSET $3",
+                    &[&l, &limit, &offset],
+                ).await?
+            }
+            (None, None) => {
+                client.query(
+                    "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
+                            created_at, updated_at, closed_at, issue_url
+                     FROM github_issues 
+                     ORDER BY updated_at DESC
+                     LIMIT $1 OFFSET $2",
+                    &[&limit, &offset],
+                ).await?
+            }
+        };
+
+        Ok(query.iter().map(|r| CachedIssue {
+            issue_id: r.get(0),
+            repo_owner: r.get(1),
+            repo_name: r.get(2),
+            github_username: r.get(3),
+            title: r.get(4),
+            state: r.get(5),
+            labels: r.get(6),
+            created_at: r.get(7),
+            updated_at: r.get(8),
+            closed_at: r.get(9),
+            issue_url: r.get(10),
+        }).collect())
+    }
+
+    /// Get pending issues (closed but no valid/invalid label)
+    pub async fn get_pending_issues(&self, limit: i32, offset: i32) -> Result<Vec<CachedIssue>> {
+        let client = self.pool.get().await?;
+
+        let rows = client
+            .query(
+                "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
+                        created_at, updated_at, closed_at, issue_url
+                 FROM pending_issues
+                 ORDER BY updated_at DESC
+                 LIMIT $1 OFFSET $2",
+                &[&limit, &offset],
+            )
+            .await?;
+
+        Ok(rows.iter().map(|r| CachedIssue {
+            issue_id: r.get(0),
+            repo_owner: r.get(1),
+            repo_name: r.get(2),
+            github_username: r.get(3),
+            title: r.get(4),
+            state: r.get(5),
+            labels: r.get(6),
+            created_at: r.get(7),
+            updated_at: r.get(8),
+            closed_at: r.get(9),
+            issue_url: r.get(10),
+        }).collect())
+    }
+
+    /// Get issues count by status
+    pub async fn get_issues_stats(&self) -> Result<IssuesStats> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_one(
+                "SELECT 
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE state = 'open') as open_count,
+                    COUNT(*) FILTER (WHERE state = 'closed') as closed_count,
+                    COUNT(*) FILTER (WHERE state = 'closed' AND 'valid' = ANY(labels)) as valid_count,
+                    COUNT(*) FILTER (WHERE state = 'closed' AND 'invalid' = ANY(labels)) as invalid_count,
+                    COUNT(*) FILTER (WHERE state = 'closed' AND NOT 'valid' = ANY(labels) AND NOT 'invalid' = ANY(labels)) as pending_count
+                 FROM github_issues",
+                &[],
+            )
+            .await?;
+
+        Ok(IssuesStats {
+            total: row.get::<_, i64>(0) as i32,
+            open: row.get::<_, i64>(1) as i32,
+            closed: row.get::<_, i64>(2) as i32,
+            valid: row.get::<_, i64>(3) as i32,
+            invalid: row.get::<_, i64>(4) as i32,
+            pending: row.get::<_, i64>(5) as i32,
+        })
+    }
+
+    /// Get hotkey details
+    pub async fn get_hotkey_details(&self, hotkey: &str) -> Result<Option<HotkeyDetails>> {
+        let client = self.pool.get().await?;
+
+        // Get registration info
+        let reg = client
+            .query_opt(
+                "SELECT github_username, registered_at FROM github_registrations WHERE hotkey = $1",
+                &[&hotkey],
+            )
+            .await?;
+
+        let (github_username, registered_at): (String, DateTime<Utc>) = match reg {
+            Some(r) => (r.get(0), r.get(1)),
+            None => return Ok(None),
+        };
+
+        // Get balance info
+        let balance = self.get_user_balance(hotkey).await?.unwrap_or(UserBalance {
+            github_username: github_username.clone(),
+            hotkey: hotkey.to_string(),
+            valid_count: 0,
+            invalid_count: 0,
+            balance: 0,
+            is_penalized: false,
+        });
+
+        // Get weight
+        let weight = self.calculate_user_weight(hotkey).await.unwrap_or(0.0);
+
+        // Get recent issues from this user
+        let issues = client
+            .query(
+                "SELECT issue_id, repo_owner, repo_name, title, state, labels, updated_at, issue_url
+                 FROM github_issues 
+                 WHERE LOWER(github_username) = LOWER($1)
+                 ORDER BY updated_at DESC
+                 LIMIT 20",
+                &[&github_username],
+            )
+            .await?;
+
+        let recent_issues: Vec<_> = issues.iter().map(|r| CachedIssueShort {
+            issue_id: r.get(0),
+            repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
+            title: r.get(3),
+            state: r.get(4),
+            labels: r.get(5),
+            updated_at: r.get(6),
+            issue_url: r.get(7),
+        }).collect();
+
+        Ok(Some(HotkeyDetails {
+            hotkey: hotkey.to_string(),
+            github_username,
+            registered_at,
+            valid_issues: balance.valid_count,
+            invalid_issues: balance.invalid_count,
+            balance: balance.balance,
+            is_penalized: balance.is_penalized,
+            weight,
+            recent_issues,
+        }))
+    }
+
+    /// Get GitHub user details by username
+    pub async fn get_github_user_details(&self, username: &str) -> Result<Option<GitHubUserDetails>> {
+        let client = self.pool.get().await?;
+
+        // Get registration info
+        let reg = client
+            .query_opt(
+                "SELECT hotkey, registered_at FROM github_registrations WHERE LOWER(github_username) = LOWER($1)",
+                &[&username],
+            )
+            .await?;
+
+        let (hotkey, registered_at): (Option<String>, Option<DateTime<Utc>>) = match reg {
+            Some(r) => (Some(r.get(0)), Some(r.get(1))),
+            None => (None, None),
+        };
+
+        // Count issues from this user
+        let stats = client
+            .query_one(
+                "SELECT 
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE state = 'closed' AND 'valid' = ANY(labels)) as valid_count,
+                    COUNT(*) FILTER (WHERE state = 'closed' AND 'invalid' = ANY(labels)) as invalid_count,
+                    COUNT(*) FILTER (WHERE state = 'open') as open_count
+                 FROM github_issues 
+                 WHERE LOWER(github_username) = LOWER($1)",
+                &[&username],
+            )
+            .await?;
+
+        let total: i64 = stats.get(0);
+        if total == 0 && hotkey.is_none() {
+            return Ok(None);
+        }
+
+        // Get recent issues
+        let issues = client
+            .query(
+                "SELECT issue_id, repo_owner, repo_name, title, state, labels, updated_at, issue_url
+                 FROM github_issues 
+                 WHERE LOWER(github_username) = LOWER($1)
+                 ORDER BY updated_at DESC
+                 LIMIT 20",
+                &[&username],
+            )
+            .await?;
+
+        let recent_issues: Vec<_> = issues.iter().map(|r| CachedIssueShort {
+            issue_id: r.get(0),
+            repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
+            title: r.get(3),
+            state: r.get(4),
+            labels: r.get(5),
+            updated_at: r.get(6),
+            issue_url: r.get(7),
+        }).collect();
+
+        Ok(Some(GitHubUserDetails {
+            github_username: username.to_string(),
+            hotkey,
+            registered_at,
+            total_issues: total as i32,
+            valid_issues: stats.get::<_, i64>(1) as i32,
+            invalid_issues: stats.get::<_, i64>(2) as i32,
+            open_issues: stats.get::<_, i64>(3) as i32,
+            recent_issues,
+        }))
+    }
+
+    /// Get sync status for all repos
+    pub async fn get_sync_status(&self) -> Result<Vec<SyncStatus>> {
+        let client = self.pool.get().await?;
+
+        let rows = client
+            .query(
+                "SELECT repo_owner, repo_name, last_sync_at, last_issue_updated_at, issues_synced
+                 FROM github_sync_state
+                 ORDER BY last_sync_at DESC",
+                &[],
+            )
+            .await?;
+
+        Ok(rows.iter().map(|r| SyncStatus {
+            repo_owner: r.get(0),
+            repo_name: r.get(1),
+            last_sync_at: r.get(2),
+            last_issue_updated_at: r.get(3),
+            issues_synced: r.get(4),
+        }).collect())
+    }
+}
+
+// ============================================================================
+// DATA STRUCTURES FOR ISSUES API
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CachedIssue {
+    pub issue_id: i64,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub github_username: String,
+    pub title: String,
+    pub state: String,
+    pub labels: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub issue_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CachedIssueShort {
+    pub issue_id: i64,
+    pub repo: String,
+    pub title: String,
+    pub state: String,
+    pub labels: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+    pub issue_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IssuesStats {
+    pub total: i32,
+    pub open: i32,
+    pub closed: i32,
+    pub valid: i32,
+    pub invalid: i32,
+    pub pending: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HotkeyDetails {
+    pub hotkey: String,
+    pub github_username: String,
+    pub registered_at: DateTime<Utc>,
+    pub valid_issues: i32,
+    pub invalid_issues: i32,
+    pub balance: i32,
+    pub is_penalized: bool,
+    pub weight: f64,
+    pub recent_issues: Vec<CachedIssueShort>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GitHubUserDetails {
+    pub github_username: String,
+    pub hotkey: Option<String>,
+    pub registered_at: Option<DateTime<Utc>>,
+    pub total_issues: i32,
+    pub valid_issues: i32,
+    pub invalid_issues: i32,
+    pub open_issues: i32,
+    pub recent_issues: Vec<CachedIssueShort>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncStatus {
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub last_sync_at: DateTime<Utc>,
+    pub last_issue_updated_at: Option<DateTime<Utc>>,
+    pub issues_synced: i32,
 }
 
 // ============================================================================

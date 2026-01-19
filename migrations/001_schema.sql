@@ -28,8 +28,7 @@ CREATE TABLE IF NOT EXISTS target_repos (
 
 -- Insert default repos
 INSERT INTO target_repos (owner, repo) VALUES 
-    ('CortexLM', 'cortex'),
-    ('CortexLM', 'fabric')
+    ('PlatformNetwork', 'bounty-challenge')
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================

@@ -12,10 +12,12 @@ pub struct GitHubIssue {
     pub id: u64,
     pub number: u32,
     pub title: String,
+    pub body: Option<String>,
     pub state: String,
     pub user: GitHubUser,
     pub labels: Vec<GitHubLabel>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub closed_at: Option<DateTime<Utc>>,
     pub html_url: String,
 }
@@ -36,12 +38,20 @@ impl GitHubIssue {
         self.labels.iter().any(|l| l.name.to_lowercase() == "valid")
     }
 
+    pub fn has_invalid_label(&self) -> bool {
+        self.labels.iter().any(|l| l.name.to_lowercase() == "invalid")
+    }
+
     pub fn is_closed(&self) -> bool {
         self.state == "closed"
     }
 
     pub fn is_valid_bounty(&self) -> bool {
         self.is_closed() && self.has_valid_label()
+    }
+
+    pub fn label_names(&self) -> Vec<String> {
+        self.labels.iter().map(|l| l.name.clone()).collect()
     }
 }
 
@@ -123,6 +133,55 @@ impl GitHubClient {
                 valid_issues.len()
             );
             all_issues.extend(valid_issues);
+
+            if count < per_page {
+                break;
+            }
+            page += 1;
+
+            // Rate limit protection
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        Ok(all_issues)
+    }
+
+    /// Fetch all issues (open and closed) since a given date
+    /// Used for incremental sync - only fetches updated issues
+    pub async fn get_all_issues_since(
+        &self,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<GitHubIssue>> {
+        let mut all_issues = Vec::new();
+        let mut page = 1;
+        let per_page = 100;
+
+        loop {
+            let mut url = format!(
+                "{}/repos/{}/{}/issues?state=all&per_page={}&page={}&sort=updated&direction=desc",
+                GITHUB_API_BASE, self.owner, self.repo, per_page, page
+            );
+
+            if let Some(since_date) = since {
+                url.push_str(&format!("&since={}", since_date.to_rfc3339()));
+            }
+
+            debug!("Fetching all issues page {}: {}", page, url);
+
+            let response = self.build_request(&url).send().await?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                warn!("GitHub API error {}: {}", status, body);
+                break;
+            }
+
+            let issues: Vec<GitHubIssue> = response.json().await?;
+            let count = issues.len();
+
+            info!("Page {}: fetched {} issues", page, count);
+            all_issues.extend(issues);
 
             if count < per_page {
                 break;
