@@ -64,50 +64,36 @@ flowchart LR
 
 ## Reward System
 
-Bounty Challenge uses an **adaptive reward system** that adjusts based on daily activity.
+Bounty Challenge uses a **point-based reward system**.
 
-### Emission Rate
+### Point System
 
-Maximum emission is reached at **250 issues per day**:
+Each resolved issue gives you points based on the repository:
 
-$$W_{max} = \min\left(\frac{N_{total}}{250}, 1.0\right)$$
+| Repository | Points per Issue | Issues for 100% |
+|------------|-----------------|-----------------|
+| **CortexLM/cortex** | 5 points | 20 issues |
+| **PlatformNetwork/term-challenge** | 1 point | 100 issues |
+| **CortexLM/vgrep** | 1 point | 100 issues |
 
-| Daily Issues | Max Weight Available |
-|--------------|---------------------|
-| 50 | 0.20 (20%) |
-| 100 | 0.40 (40%) |
-| 250 | 1.00 (100%) |
-| 500 | 1.00 (capped) |
+### Weight Calculation
 
-### Adaptive Per-Issue Weight
+Your weight is calculated from your total points:
 
-Each resolved issue gives **0.01 weight** by default, but this adapts when activity is high:
+$$W_{user} = \min\left(\frac{points}{100}, 1.0\right) + W_{stars}$$
 
-$$w_{issue} = \begin{cases} 
-0.01 & \text{if } N_{total} \leq 100 \\ 
-0.01 \times \frac{100}{N_{total}} & \text{if } N_{total} > 100
-\end{cases}$$
+Where:
+- **100 points = 100% weight** (maximum)
+- $W_{stars}$ = star bonus (see below)
 
-| Daily Issues | Weight per Issue |
-|--------------|-----------------|
-| 50 | 0.0100 |
-| 100 | 0.0100 |
-| 200 | 0.0050 |
-| 500 | 0.0020 |
+**Examples:**
 
-### User Weight Calculation
-
-Your total weight is your issues multiplied by the current per-issue weight, plus any star bonus:
-
-$$W_{user} = \min(n_{user} \times w_{issue}, W_{max}) + W_{stars}$$
-
-Where $W_{stars} = 0.25 \times n_{stars}$ if you have at least 2 valid issues, otherwise $0$.
-
-**Example:** With 200 issues/day globally, if you resolve 10 issues and starred 3 repos:
-- Weight per issue: 0.005
-- Base weight: 10 × 0.005 = 0.05 (5%)
-- Star bonus: 3 × 0.25 = 0.75
-- Total weight: 0.05 + 0.75 = 0.80
+| Miner | Issues | Repository | Points | Weight |
+|-------|--------|------------|--------|--------|
+| A | 7 | cortex | 7 × 5 = 35 | 35% |
+| B | 7 | vgrep | 7 × 1 = 7 | 7% |
+| C | 20 | cortex | 20 × 5 = 100 | 100% |
+| D | 100 | term-challenge | 100 × 1 = 100 | 100% |
 
 See [Scoring Documentation](docs/reference/scoring.md) for complete specifications.
 
@@ -127,12 +113,12 @@ balance = valid_issues - invalid_issues
 weight = balance >= 0 ? normal_weight : 0
 ```
 
-**Example:**
+**Example:** (assuming cortex issues = 5 points each)
 
-| Miner | Valid | Invalid | Balance | Weight |
-|-------|-------|---------|---------|--------|
-| A | 5 | 3 | +2 | 0.05 |
-| B | 3 | 5 | -2 | 0.00 (penalized) |
+| Miner | Valid | Invalid | Balance | Points | Weight |
+|-------|-------|---------|---------|--------|--------|
+| A | 5 | 3 | +2 | 25 pts | 25% |
+| B | 3 | 5 | -2 | - | 0% (penalized) |
 
 ### Star Bonus
 
@@ -162,13 +148,13 @@ Earn extra credits by starring our repositories!
 
 Analyze these projects to find bugs, security issues, and improvements:
 
-| Repository | Description | Points | URL |
-|------------|-------------|--------|-----|
-| **CortexLM/cortex** | Cortex CLI and core | **1.0x** | https://github.com/CortexLM/cortex |
-| **PlatformNetwork/term-challenge** | Terminal Bench Challenge | **1.0x** | https://github.com/PlatformNetwork/term-challenge |
-| **CortexLM/vgrep** | Visual grep tool | **0.25x** | https://github.com/CortexLM/vgrep |
+| Repository | Description | Points | For 100% Weight | URL |
+|------------|-------------|--------|-----------------|-----|
+| **CortexLM/cortex** | Cortex CLI and core | **5 points** | 20 issues | https://github.com/CortexLM/cortex |
+| **PlatformNetwork/term-challenge** | Terminal Bench Challenge | **1 point** | 100 issues | https://github.com/PlatformNetwork/term-challenge |
+| **CortexLM/vgrep** | Visual grep tool | **1 point** | 100 issues | https://github.com/CortexLM/vgrep |
 
-> **Note:** Points multiplier affects your weight reward. A valid issue in cortex gives 4x more weight than vgrep!
+> **Note:** 100 points = 100% weight. A valid issue in cortex gives 5x more points than vgrep/term-challenge!
 
 > **Important:** Analyze the repositories above for bugs, then submit your issue reports to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
 

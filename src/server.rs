@@ -145,11 +145,9 @@ pub struct GetWeightsResponse {
     pub total_miners: usize,
 }
 
-/// Calculate score from valid issues count (logarithmic scaling)
-fn calculate_weight(valid_issues: u32) -> f64 {
-    // Logarithmic scoring: score = log2(1 + valid_issues) / 10
-    ((1.0 + valid_issues as f64).ln() / std::f64::consts::LN_2) / 10.0
-}
+// Weight calculation moved to pg_storage::calculate_weight_from_points()
+// Uses point system: cortex=5pts, term-challenge=1pt, vgrep=1pt
+// 100 points = 100% weight
 
 async fn get_weights_handler(
     State(state): State<Arc<AppState>>,

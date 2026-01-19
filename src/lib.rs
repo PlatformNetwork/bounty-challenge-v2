@@ -34,4 +34,4 @@ pub use challenge::BountyChallenge;
 pub use github::GitHubClient;
 pub use github_oauth::GitHubDeviceAuth;
 pub use metagraph::MetagraphCache;
-pub use pg_storage::{calculate_weight, PgStorage};
+pub use pg_storage::{calculate_weight_from_points, PgStorage, WEIGHT_PER_POINT, MAX_POINTS_FOR_FULL_WEIGHT};

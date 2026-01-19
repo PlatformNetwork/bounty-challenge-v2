@@ -10,14 +10,11 @@ use serde::{Deserialize, Serialize};
 use tokio_postgres::NoTls;
 use tracing::{debug, info, warn};
 
-/// Maximum emission rate: 250 issues per day = full weight
-pub const MAX_ISSUES_FOR_FULL_EMISSION: i32 = 250;
+/// Maximum points for full weight (100 points = 100%)
+pub const MAX_POINTS_FOR_FULL_WEIGHT: f64 = 100.0;
 
-/// Base weight per resolved issue
-pub const BASE_WEIGHT_PER_ISSUE: f64 = 0.01;
-
-/// Threshold after which weight per issue decreases
-pub const ADAPTATION_THRESHOLD: i32 = 100;
+/// Weight per point (1 point = 1% = 0.01)
+pub const WEIGHT_PER_POINT: f64 = 0.01;
 
 /// Database pool configuration
 const DB_POOL_MAX_SIZE: usize = 20;
@@ -380,6 +377,11 @@ impl PgStorage {
     // ========================================================================
 
     /// Record a resolved issue
+    /// 
+    /// Points are based on multiplier:
+    /// - cortex: 5 points
+    /// - term-challenge: 1 point
+    /// - vgrep: 1 point
     pub async fn record_resolved_issue(
         &self,
         issue_id: i64,
@@ -395,11 +397,8 @@ impl PgStorage {
         // Get hotkey if registered
         let hotkey = self.get_hotkey_by_github(github_username).await?;
 
-        // Get repo multiplier (cortex=4.0, vgrep=1.0, platform/term=0.5)
+        // Get repo multiplier (points per issue: cortex=5, vgrep=1, term-challenge=1)
         let multiplier = self.get_repo_multiplier(repo_owner, repo_name).await?;
-
-        // Calculate weight at time of resolution
-        let weight = self.calculate_issue_weight().await?;
 
         let result = client
             .execute(
@@ -415,7 +414,7 @@ impl PgStorage {
                     &issue_url,
                     &issue_title,
                     &resolved_at,
-                    &(weight as f32),
+                    &(0.0_f32), // weight_attributed is deprecated, points come from multiplier
                     &(multiplier as f32),
                 ],
             )
@@ -423,8 +422,8 @@ impl PgStorage {
 
         if result > 0 {
             info!(
-                "Recorded issue #{} from {}/{} by {} (weight: {:.4}, multiplier: {}x)",
-                issue_id, repo_owner, repo_name, github_username, weight, multiplier
+                "Recorded issue #{} from {}/{} by {} ({} points)",
+                issue_id, repo_owner, repo_name, github_username, multiplier
             );
             Ok(true)
         } else {
@@ -483,31 +482,6 @@ impl PgStorage {
     // WEIGHT CALCULATION
     // ========================================================================
 
-    /// Calculate the current weight for a single issue
-    /// Based on: max 250 issues/day = full emission, 0.01 per issue, adaptive if > 100
-    pub async fn calculate_issue_weight(&self) -> Result<f64> {
-        let client = self.pool.get().await?;
-
-        let row = client
-            .query_one(
-                "SELECT COUNT(*) FROM resolved_issues WHERE resolved_at >= NOW() - INTERVAL '24 hours'",
-                &[],
-            )
-            .await?;
-
-        let total_issues_24h: i64 = row.get(0);
-        let total = total_issues_24h as i32;
-
-        // Adaptive weight calculation
-        let weight_per_issue = if total > ADAPTATION_THRESHOLD {
-            BASE_WEIGHT_PER_ISSUE * (ADAPTATION_THRESHOLD as f64 / total as f64)
-        } else {
-            BASE_WEIGHT_PER_ISSUE
-        };
-
-        Ok(weight_per_issue)
-    }
-
     /// Get current weights for all registered users
     pub async fn get_current_weights(&self) -> Result<Vec<CurrentWeight>> {
         let client = self.pool.get().await?;
@@ -533,33 +507,28 @@ impl PgStorage {
             .collect())
     }
 
-    /// Calculate weight for a specific user
+    /// Calculate weight for a specific user based on points (multiplier * issues)
+    /// 
+    /// Points system:
+    /// - cortex: 5 points per issue
+    /// - term-challenge: 1 point per issue  
+    /// - vgrep: 1 point per issue
+    /// - 100 points = 100% weight
     pub async fn calculate_user_weight(&self, hotkey: &str) -> Result<f64> {
         let client = self.pool.get().await?;
 
-        // Get total issues in 24h
-        let total_row = client
-            .query_one(
-                "SELECT COUNT(*) FROM resolved_issues WHERE resolved_at >= NOW() - INTERVAL '24 hours'",
-                &[],
-            )
-            .await?;
-        let total_issues_24h: i64 = total_row.get(0);
-        let total = total_issues_24h as i32;
-
-        // Get user's issues in 24h
+        // Get user's total points (SUM of multipliers) in last 24h
         let user_row = client
             .query_one(
-                "SELECT COUNT(*) FROM resolved_issues 
+                "SELECT COALESCE(SUM(multiplier), 0) FROM resolved_issues 
                  WHERE hotkey = $1 AND resolved_at >= NOW() - INTERVAL '24 hours'",
                 &[&hotkey],
             )
             .await?;
-        let user_issues: i64 = user_row.get(0);
-        let user_count = user_issues as i32;
+        let user_points: f64 = user_row.get::<_, f64>(0);
 
-        // Calculate weight
-        let weight = calculate_weight(user_count, total);
+        // Calculate weight: points * 0.01, capped at 1.0 (100%)
+        let weight = (user_points * WEIGHT_PER_POINT).min(1.0);
         Ok(weight)
     }
 
@@ -1569,32 +1538,17 @@ pub struct StarStats {
     pub users_with_bonus: i32,
 }
 
-/// Calculate weight for a user based on their issues and total issues in 24h
+/// Calculate weight based on points
 /// 
-/// Rules:
-/// - Maximum emission rate reached at 250 issues per day
-/// - max_weight_total = min(total_issues_24h / 250, 1.0)
-/// - Each issue gives max 0.01 weight
-/// - If total > 100 issues, weight per issue decreases proportionally
-pub fn calculate_weight(issues_resolved_by_user: i32, total_issues_24h: i32) -> f64 {
-    if issues_resolved_by_user == 0 || total_issues_24h == 0 {
-        return 0.0;
-    }
-
-    // Maximum total weight available
-    let max_weight_total = (total_issues_24h as f64 / MAX_ISSUES_FOR_FULL_EMISSION as f64).min(1.0);
-
-    // Adapt weight per issue if too many issues
-    let weight_per_issue = if total_issues_24h > ADAPTATION_THRESHOLD {
-        BASE_WEIGHT_PER_ISSUE * (ADAPTATION_THRESHOLD as f64 / total_issues_24h as f64)
-    } else {
-        BASE_WEIGHT_PER_ISSUE
-    };
-
-    // User's weight (capped at max_weight_total)
-    let user_weight = (issues_resolved_by_user as f64 * weight_per_issue).min(max_weight_total);
-
-    user_weight
+/// Points system:
+/// - cortex: 5 points per issue
+/// - term-challenge: 1 point per issue
+/// - vgrep: 1 point per issue
+/// - 100 points = 100% weight (capped)
+/// 
+/// Formula: weight = min(points * 0.01, 1.0)
+pub fn calculate_weight_from_points(points: f64) -> f64 {
+    (points * WEIGHT_PER_POINT).min(1.0)
 }
 
 #[cfg(test)]
@@ -1602,34 +1556,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_weight_calculation_basic() {
-        // 1 issue out of 10 = 0.01
-        assert!((calculate_weight(1, 10) - 0.01).abs() < 0.0001);
+    fn test_weight_from_points_basic() {
+        // 1 point = 1%
+        assert!((calculate_weight_from_points(1.0) - 0.01).abs() < 0.0001);
         
-        // 5 issues out of 50 = 0.05
-        assert!((calculate_weight(5, 50) - 0.05).abs() < 0.0001);
+        // 10 points = 10%
+        assert!((calculate_weight_from_points(10.0) - 0.10).abs() < 0.0001);
+        
+        // 50 points = 50%
+        assert!((calculate_weight_from_points(50.0) - 0.50).abs() < 0.0001);
     }
 
     #[test]
-    fn test_weight_calculation_adaptive() {
-        // 10 issues out of 200 (>100, so adaptive)
-        // weight_per_issue = 0.01 * (100/200) = 0.005
-        // user_weight = 10 * 0.005 = 0.05
-        let weight = calculate_weight(10, 200);
-        assert!((weight - 0.05).abs() < 0.0001);
+    fn test_weight_from_points_cortex() {
+        // 7 cortex issues = 7 * 5 = 35 points = 35%
+        let cortex_points = 7.0 * 5.0;
+        assert!((calculate_weight_from_points(cortex_points) - 0.35).abs() < 0.0001);
+        
+        // 20 cortex issues = 20 * 5 = 100 points = 100%
+        let cortex_points = 20.0 * 5.0;
+        assert!((calculate_weight_from_points(cortex_points) - 1.0).abs() < 0.0001);
     }
 
     #[test]
-    fn test_weight_calculation_max_cap() {
-        // 250 issues = max emission (1.0)
-        // Even with 1000 issues resolved, max weight is 1.0
-        let weight = calculate_weight(1000, 250);
-        assert!(weight <= 1.0);
+    fn test_weight_from_points_vgrep() {
+        // 7 vgrep issues = 7 * 1 = 7 points = 7%
+        let vgrep_points = 7.0 * 1.0;
+        assert!((calculate_weight_from_points(vgrep_points) - 0.07).abs() < 0.0001);
+        
+        // 100 vgrep issues = 100 * 1 = 100 points = 100%
+        let vgrep_points = 100.0 * 1.0;
+        assert!((calculate_weight_from_points(vgrep_points) - 1.0).abs() < 0.0001);
     }
 
     #[test]
-    fn test_weight_calculation_zero() {
-        assert_eq!(calculate_weight(0, 100), 0.0);
-        assert_eq!(calculate_weight(10, 0), 0.0);
+    fn test_weight_from_points_max_cap() {
+        // 200 points should still be capped at 100%
+        assert!((calculate_weight_from_points(200.0) - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_weight_from_points_zero() {
+        assert_eq!(calculate_weight_from_points(0.0), 0.0);
     }
 }
