@@ -13,7 +13,7 @@ WORKDIR /build
 # Stage 2: Planner - analyze dependencies
 FROM chef AS planner
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock config.toml ./
 COPY src ./src
 COPY migrations ./migrations
 
@@ -34,7 +34,7 @@ COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Copy source and build
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock config.toml ./
 COPY src ./src
 COPY migrations ./migrations
 
