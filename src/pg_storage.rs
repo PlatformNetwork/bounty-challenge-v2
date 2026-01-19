@@ -635,6 +635,50 @@ impl PgStorage {
             .collect())
     }
 
+    /// Get pending issues count for a user (issues they created that are not yet validated)
+    pub async fn get_user_pending_count(&self, github_username: &str) -> Result<i32> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_one(
+                "SELECT COUNT(*) FROM github_issues 
+                 WHERE LOWER(github_username) = LOWER($1) 
+                   AND state = 'open'
+                   AND NOT 'valid' = ANY(labels) 
+                   AND NOT 'invalid' = ANY(labels)",
+                &[&github_username],
+            )
+            .await?;
+
+        Ok(row.get::<_, i64>(0) as i32)
+    }
+
+    /// Get all users with their pending issues count
+    pub async fn get_all_users_pending(&self) -> Result<std::collections::HashMap<String, i32>> {
+        let client = self.pool.get().await?;
+
+        let rows = client
+            .query(
+                "SELECT LOWER(github_username), COUNT(*) 
+                 FROM github_issues 
+                 WHERE state = 'open'
+                   AND NOT 'valid' = ANY(labels) 
+                   AND NOT 'invalid' = ANY(labels)
+                 GROUP BY LOWER(github_username)",
+                &[],
+            )
+            .await?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let username: String = row.get(0);
+            let count: i64 = row.get(1);
+            map.insert(username, count as i32);
+        }
+
+        Ok(map)
+    }
+
     // ========================================================================
     // PENALTY SYSTEM
     // ========================================================================

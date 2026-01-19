@@ -215,13 +215,25 @@ impl BountyChallenge {
             .await
             .map_err(|e| ChallengeError::Internal(e.to_string()))?;
 
+        // Get pending issues count for all users
+        let pending_map = self
+            .storage
+            .get_all_users_pending()
+            .await
+            .unwrap_or_default();
+
         let leaderboard: Vec<_> = weights
             .into_iter()
             .map(|w| {
+                let pending = pending_map
+                    .get(&w.github_username.to_lowercase())
+                    .copied()
+                    .unwrap_or(0);
                 json!({
                     "miner_hotkey": w.hotkey,
                     "github_username": w.github_username,
                     "valid_issues": w.issues_resolved_24h,
+                    "pending_issues": pending,
                     "weight": w.weight,
                     "is_penalized": w.is_penalized,
                 })
