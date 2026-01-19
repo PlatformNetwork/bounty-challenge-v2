@@ -503,7 +503,7 @@ impl PgStorage {
 
         let rows = client
             .query(
-                "SELECT github_username, hotkey, issues_resolved_24h, total_issues_24h, weight::FLOAT8, is_penalized 
+                "SELECT github_username, hotkey, issues_resolved_24h::BIGINT, total_issues_24h::BIGINT, weight::FLOAT8, is_penalized 
                  FROM current_weights ORDER BY weight DESC",
                 &[],
             )
@@ -632,7 +632,7 @@ impl PgStorage {
 
         let rows = client
             .query(
-                "SELECT github_username, hotkey, issues_resolved_24h, total_issues_24h, weight::FLOAT8, is_penalized
+                "SELECT github_username, hotkey, issues_resolved_24h::BIGINT, total_issues_24h::BIGINT, weight::FLOAT8, is_penalized
                  FROM current_weights
                  ORDER BY weight DESC
                  LIMIT $1",
