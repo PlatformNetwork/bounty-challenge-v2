@@ -231,6 +231,21 @@ impl PgStorage {
             info!("Applied migration 003_github_issues");
         }
 
+        // Check for fix_weights migration (version 7)
+        let has_fix_weights: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 7)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_fix_weights {
+            let migration_sql = include_str!("../migrations/007_fix_weights.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 007_fix_weights");
+        }
+
         Ok(())
     }
 

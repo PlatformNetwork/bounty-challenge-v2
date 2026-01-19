@@ -173,22 +173,22 @@ async fn get_weights_handler(
         }
     };
 
-    // Convert to WeightEntry (term-challenge compatible format)
+    // Convert to WeightEntry - NO NORMALIZATION
+    // Each user's weight = their points * 0.01, capped at 1.0 per user
+    // Points come from resolved issues with multipliers (cortex=5, vgrep=1, etc.)
+    // 100 total points globally = weights can sum to 1.0
+    // If total < 1.0, remainder goes to burn (handled by validator)
     let mut weights: Vec<WeightEntry> = current_weights
         .iter()
+        .filter(|w| w.weight > 0.0 && !w.is_penalized) // Exclude zero weight and penalized users
         .map(|w| WeightEntry {
             hotkey: w.hotkey.clone(),
-            weight: w.weight,
+            weight: w.weight, // Already capped at 1.0 per user in DB
         })
         .collect();
 
-    // Normalize weights to sum to 1.0
-    let total_weight: f64 = weights.iter().map(|w| w.weight).sum();
-    if total_weight > 0.0 {
-        for w in &mut weights {
-            w.weight /= total_weight;
-        }
-    }
+    // DO NOT normalize - weights represent actual earned percentage
+    // Total may be < 1.0 if not enough global activity (remainder = burn)
 
     // Sort by weight descending
     weights.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap());
