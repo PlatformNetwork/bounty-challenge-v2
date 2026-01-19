@@ -740,6 +740,110 @@ impl PgStorage {
     }
 
     // ========================================================================
+    // STAR BONUS SYSTEM
+    // ========================================================================
+
+    /// Get list of repos to watch for stars
+    pub async fn get_star_target_repos(&self) -> Result<Vec<StarTargetRepo>> {
+        let client = self.pool.get().await?;
+
+        let rows = client
+            .query(
+                "SELECT owner, repo FROM star_target_repos WHERE active = true",
+                &[],
+            )
+            .await?;
+
+        Ok(rows
+            .iter()
+            .map(|r| StarTargetRepo {
+                owner: r.get(0),
+                repo: r.get(1),
+            })
+            .collect())
+    }
+
+    /// Upsert a star (user starred a repo)
+    pub async fn upsert_star(&self, github_username: &str, repo_owner: &str, repo_name: &str) -> Result<bool> {
+        let client = self.pool.get().await?;
+
+        let result = client
+            .execute(
+                "INSERT INTO github_stars (github_username, repo_owner, repo_name)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (github_username, repo_owner, repo_name) DO NOTHING",
+                &[&github_username.to_lowercase(), &repo_owner, &repo_name],
+            )
+            .await?;
+
+        Ok(result > 0)
+    }
+
+    /// Update star sync timestamp for a repo
+    pub async fn update_star_sync(&self, repo_owner: &str, repo_name: &str) -> Result<()> {
+        let client = self.pool.get().await?;
+
+        client
+            .execute(
+                "UPDATE star_target_repos SET last_synced_at = NOW() 
+                 WHERE owner = $1 AND repo = $2",
+                &[&repo_owner, &repo_name],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get star count for a user
+    pub async fn get_user_star_count(&self, github_username: &str) -> Result<i32> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_one(
+                "SELECT COUNT(*) FROM github_stars WHERE LOWER(github_username) = LOWER($1)",
+                &[&github_username],
+            )
+            .await?;
+
+        Ok(row.get::<_, i64>(0) as i32)
+    }
+
+    /// Get star bonus for a user (0.25 per star if >= 2 resolved issues)
+    pub async fn get_user_star_bonus(&self, github_username: &str) -> Result<f64> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_opt(
+                "SELECT star_bonus FROM user_star_bonus WHERE LOWER(github_username) = LOWER($1)",
+                &[&github_username],
+            )
+            .await?;
+
+        Ok(row.map(|r| r.get::<_, f64>(0)).unwrap_or(0.0))
+    }
+
+    /// Get star stats
+    pub async fn get_star_stats(&self) -> Result<StarStats> {
+        let client = self.pool.get().await?;
+
+        let row = client
+            .query_one(
+                "SELECT 
+                    (SELECT COUNT(*) FROM github_stars) as total_stars,
+                    (SELECT COUNT(DISTINCT github_username) FROM github_stars) as users_with_stars,
+                    (SELECT COUNT(*) FROM user_star_bonus WHERE star_bonus > 0) as users_with_bonus",
+                &[],
+            )
+            .await?;
+
+        Ok(StarStats {
+            total_stars: row.get::<_, i64>(0) as i32,
+            users_with_stars: row.get::<_, i64>(1) as i32,
+            users_with_bonus: row.get::<_, i64>(2) as i32,
+        })
+    }
+
+    // ========================================================================
     // GITHUB ISSUES SYNC & CACHE
     // ========================================================================
 
@@ -1280,6 +1384,19 @@ pub enum LabelChange {
     BecameValid,
     BecameInvalid,
     LostValid,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StarTargetRepo {
+    pub owner: String,
+    pub repo: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StarStats {
+    pub total_stars: i32,
+    pub users_with_stars: i32,
+    pub users_with_bonus: i32,
 }
 
 /// Calculate weight for a user based on their issues and total issues in 24h

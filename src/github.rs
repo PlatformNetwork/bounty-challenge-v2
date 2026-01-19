@@ -240,3 +240,66 @@ pub struct BountyVerification {
     pub issue_url: String,
     pub closed_at: Option<DateTime<Utc>>,
 }
+
+/// Fetch all stargazers for a repository
+pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
+    let client = reqwest::Client::new();
+    let token = std::env::var("GITHUB_TOKEN").ok();
+    
+    let mut all_stargazers = Vec::new();
+    let mut page = 1;
+    let per_page = 100;
+
+    loop {
+        let url = format!(
+            "{}/repos/{}/{}/stargazers?per_page={}&page={}",
+            GITHUB_API_BASE, owner, repo, per_page, page
+        );
+
+        let mut req = client
+            .get(&url)
+            .header("User-Agent", "bounty-challenge/0.1.0")
+            .header("Accept", "application/vnd.github+json");
+
+        if let Some(ref t) = token {
+            req = req.header("Authorization", format!("Bearer {}", t));
+        }
+
+        let response = req.send().await?;
+
+        if !response.status().is_success() {
+            if response.status().as_u16() == 404 {
+                debug!("Repo {}/{} not found or no access", owner, repo);
+                return Ok(vec![]);
+            }
+            warn!("Failed to fetch stargazers for {}/{}: {}", owner, repo, response.status());
+            break;
+        }
+
+        let stargazers: Vec<GitHubUser> = response.json().await?;
+        
+        if stargazers.is_empty() {
+            break;
+        }
+
+        let count = stargazers.len();
+        for user in stargazers {
+            all_stargazers.push(user.login);
+        }
+
+        if count < per_page {
+            break;
+        }
+
+        page += 1;
+        
+        // Rate limit protection
+        if page > 10 {
+            info!("Stopping at page 10 for {}/{} stargazers", owner, repo);
+            break;
+        }
+    }
+
+    debug!("Found {} stargazers for {}/{}", all_stargazers.len(), owner, repo);
+    Ok(all_stargazers)
+}
