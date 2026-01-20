@@ -1116,13 +1116,39 @@ impl PgStorage {
             None => (false, false),
         };
 
-        // Detect changes
+        // Detect changes OR first-time sync with labels
         let change = if has_invalid && !had_invalid {
-            LabelChange::BecameInvalid
+            // Check if already recorded as invalid
+            let already_recorded = client
+                .query_opt(
+                    "SELECT 1 FROM invalid_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                    &[&repo_owner, &repo_name, &(issue.number as i64)],
+                )
+                .await?
+                .is_some();
+            
+            if !already_recorded {
+                LabelChange::BecameInvalid // Record it
+            } else {
+                LabelChange::None
+            }
         } else if had_valid && !has_valid {
             LabelChange::LostValid
         } else if has_valid && !had_valid {
-            LabelChange::BecameValid
+            // Check if already credited
+            let already_credited = client
+                .query_opt(
+                    "SELECT 1 FROM resolved_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                    &[&repo_owner, &repo_name, &(issue.number as i64)],
+                )
+                .await?
+                .is_some();
+            
+            if !already_credited {
+                LabelChange::BecameValid // Treat as new valid to trigger credit
+            } else {
+                LabelChange::None
+            }
         } else if has_valid && had_valid {
             // Already valid - check if already credited
             let already_credited = client
@@ -1135,6 +1161,21 @@ impl PgStorage {
             
             if !already_credited {
                 LabelChange::BecameValid // Treat as new valid to trigger credit
+            } else {
+                LabelChange::None
+            }
+        } else if has_invalid && had_invalid {
+            // Already invalid - check if already recorded
+            let already_recorded = client
+                .query_opt(
+                    "SELECT 1 FROM invalid_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                    &[&repo_owner, &repo_name, &(issue.number as i64)],
+                )
+                .await?
+                .is_some();
+            
+            if !already_recorded {
+                LabelChange::BecameInvalid // Record it
             } else {
                 LabelChange::None
             }
