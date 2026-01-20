@@ -1210,7 +1210,14 @@ impl PgStorage {
                       issue.number, repo_owner, repo_name, issue.user.login);
             }
             LabelChange::LostValid => {
-                warn!("Issue #{} in {}/{} LOST valid label", issue.number, repo_owner, repo_name);
+                // Remove from resolved_issues when valid label is removed
+                client
+                    .execute(
+                        "DELETE FROM resolved_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                        &[&repo_owner, &repo_name, &(issue.number as i64)],
+                    )
+                    .await?;
+                warn!("Issue #{} in {}/{} LOST valid label - removed from resolved_issues", issue.number, repo_owner, repo_name);
             }
             LabelChange::BecameValid => {
                 // Get multiplier from project tag (cortex, vgrep, etc.)
