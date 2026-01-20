@@ -246,6 +246,21 @@ impl PgStorage {
             info!("Applied migration 007_fix_weights");
         }
 
+        // Check for cleanup migration (version 8)
+        let has_cleanup: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 8)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_cleanup {
+            let migration_sql = include_str!("../migrations/008_cleanup.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 008_cleanup");
+        }
+
         Ok(())
     }
 
@@ -1028,6 +1043,55 @@ impl PgStorage {
         Ok(())
     }
 
+    /// Mark issues as deleted if they weren't seen in the current sync
+    /// This handles issues that were transferred or deleted on GitHub
+    pub async fn mark_deleted_issues(
+        &self,
+        repo_owner: &str,
+        repo_name: &str,
+        seen_issue_ids: &[i64],
+    ) -> Result<i32> {
+        let client = self.pool.get().await?;
+
+        // Mark issues as deleted if they exist in our DB but weren't returned by GitHub
+        let result = client
+            .execute(
+                "UPDATE github_issues 
+                 SET deleted_at = NOW()
+                 WHERE repo_owner = $1 
+                   AND repo_name = $2 
+                   AND deleted_at IS NULL
+                   AND issue_id != ALL($3)",
+                &[&repo_owner, &repo_name, &seen_issue_ids],
+            )
+            .await?;
+
+        if result > 0 {
+            info!(
+                "Marked {} stale issues as deleted in {}/{}",
+                result, repo_owner, repo_name
+            );
+        }
+
+        Ok(result as i32)
+    }
+
+    /// Restore an issue if it reappears (was marked deleted but now exists)
+    pub async fn restore_issue(&self, repo_owner: &str, repo_name: &str, issue_id: i64) -> Result<()> {
+        let client = self.pool.get().await?;
+
+        client
+            .execute(
+                "UPDATE github_issues 
+                 SET deleted_at = NULL 
+                 WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                &[&repo_owner, &repo_name, &issue_id],
+            )
+            .await?;
+
+        Ok(())
+    }
+
     /// Upsert a GitHub issue and detect label changes
     pub async fn upsert_issue(&self, issue: &crate::github::GitHubIssue, repo_owner: &str, repo_name: &str) -> Result<LabelChange> {
         let client = self.pool.get().await?;
@@ -1146,13 +1210,13 @@ impl PgStorage {
             LabelChange::None => {}
         }
 
-        // Upsert the issue
+        // Upsert the issue (also clear deleted_at if it was previously marked deleted)
         client
             .execute(
                 "INSERT INTO github_issues (
                     issue_id, repo_owner, repo_name, github_username, title, body,
-                    state, labels, created_at, updated_at, closed_at, issue_url, synced_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+                    state, labels, created_at, updated_at, closed_at, issue_url, synced_at, deleted_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NULL)
                 ON CONFLICT (repo_owner, repo_name, issue_id) DO UPDATE SET
                     title = $5,
                     body = $6,
@@ -1160,7 +1224,8 @@ impl PgStorage {
                     labels = $8,
                     updated_at = $10,
                     closed_at = $11,
-                    synced_at = NOW()",
+                    synced_at = NOW(),
+                    deleted_at = NULL",
                 &[
                     &(issue.number as i64),
                     &repo_owner,
@@ -1181,7 +1246,7 @@ impl PgStorage {
         Ok(change)
     }
 
-    /// Get all issues with optional filters
+    /// Get all issues with optional filters (excludes deleted issues)
     pub async fn get_issues(
         &self,
         state: Option<&str>,
@@ -1200,7 +1265,7 @@ impl PgStorage {
                     "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
                             created_at, updated_at, closed_at, issue_url
                      FROM github_issues 
-                     WHERE state = $1 AND $2 = ANY(labels)
+                     WHERE state = $1 AND $2 = ANY(labels) AND deleted_at IS NULL
                      ORDER BY updated_at DESC
                      LIMIT $3 OFFSET $4",
                     &[&s, &l, &limit_i64, &offset_i64],
@@ -1211,7 +1276,7 @@ impl PgStorage {
                     "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
                             created_at, updated_at, closed_at, issue_url
                      FROM github_issues 
-                     WHERE state = $1
+                     WHERE state = $1 AND deleted_at IS NULL
                      ORDER BY updated_at DESC
                      LIMIT $2 OFFSET $3",
                     &[&s, &limit_i64, &offset_i64],
@@ -1222,7 +1287,7 @@ impl PgStorage {
                     "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
                             created_at, updated_at, closed_at, issue_url
                      FROM github_issues 
-                     WHERE $1 = ANY(labels)
+                     WHERE $1 = ANY(labels) AND deleted_at IS NULL
                      ORDER BY updated_at DESC
                      LIMIT $2 OFFSET $3",
                     &[&l, &limit_i64, &offset_i64],
@@ -1233,6 +1298,7 @@ impl PgStorage {
                     "SELECT issue_id, repo_owner, repo_name, github_username, title, state, labels, 
                             created_at, updated_at, closed_at, issue_url
                      FROM github_issues 
+                     WHERE deleted_at IS NULL
                      ORDER BY updated_at DESC
                      LIMIT $1 OFFSET $2",
                     &[&limit_i64, &offset_i64],
@@ -1288,7 +1354,7 @@ impl PgStorage {
         }).collect())
     }
 
-    /// Get issues count by status
+    /// Get issues count by status (excludes deleted issues)
     pub async fn get_issues_stats(&self) -> Result<IssuesStats> {
         let client = self.pool.get().await?;
 
@@ -1301,7 +1367,8 @@ impl PgStorage {
                     COUNT(*) FILTER (WHERE 'valid' = ANY(labels)) as valid_count,
                     COUNT(*) FILTER (WHERE 'invalid' = ANY(labels)) as invalid_count,
                     COUNT(*) FILTER (WHERE state = 'closed' AND NOT 'valid' = ANY(labels) AND NOT 'invalid' = ANY(labels)) as pending_count
-                 FROM github_issues",
+                 FROM github_issues
+                 WHERE deleted_at IS NULL",
                 &[],
             )
             .await?;

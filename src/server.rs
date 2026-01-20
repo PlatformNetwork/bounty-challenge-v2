@@ -602,22 +602,35 @@ async fn trigger_sync_handler(State(state): State<Arc<AppState>>) -> Json<serde_
 }
 
 /// Sync issues from a single repo
+/// Fetches ALL issues from GitHub and marks missing ones as deleted
 pub async fn sync_repo(storage: &PgStorage, owner: &str, repo: &str) -> anyhow::Result<i32> {
     let github = crate::github::GitHubClient::new(owner, repo);
     
     info!("Syncing all issues from {}/{}", owner, repo);
     
-    // Fetch ALL issues from GitHub
+    // Fetch ALL issues from GitHub (both open and closed)
     let issues = github.get_all_issues().await?;
     let count = issues.len() as i32;
     
-    // Upsert each issue
+    // Collect issue IDs that we see from GitHub
+    let seen_issue_ids: Vec<i64> = issues.iter().map(|i| i.number as i64).collect();
+    
+    // Upsert each issue (this also clears deleted_at if issue reappears)
     for issue in &issues {
         storage.upsert_issue(issue, owner, repo).await?;
     }
     
+    // Mark issues not returned by GitHub as deleted (transferred/removed)
+    let deleted = storage.mark_deleted_issues(owner, repo, &seen_issue_ids).await?;
+    if deleted > 0 {
+        info!("Marked {} stale issues as deleted in {}/{}", deleted, owner, repo);
+    }
+    
     // Update sync state
     storage.update_sync_state(owner, repo, count).await?;
+    
+    info!("Sync complete for {}/{}: {} issues from GitHub, {} marked deleted", 
+          owner, repo, count, deleted);
     
     Ok(count)
 }
