@@ -727,7 +727,7 @@ impl PgStorage {
                     SELECT 
                         r.hotkey,
                         COUNT(*) as valid_count,
-                        SUM(ri.multiplier * 5)::INTEGER as total_points,
+                        SUM(ri.multiplier)::INTEGER as total_points,
                         MAX(ri.resolved_at) as last_valid
                     FROM github_registrations r
                     JOIN resolved_issues ri ON r.hotkey = ri.hotkey
@@ -736,7 +736,8 @@ impl PgStorage {
                 user_invalid AS (
                     SELECT 
                         r.hotkey,
-                        COUNT(*) as invalid_count
+                        COUNT(*) as invalid_count,
+                        COUNT(*)::INTEGER as penalty_points
                     FROM github_registrations r
                     JOIN invalid_issues ii ON r.hotkey = ii.hotkey
                     GROUP BY r.hotkey
@@ -763,8 +764,8 @@ impl PgStorage {
                     COALESCE(up.pending_count, 0)::INTEGER as pending_issues,
                     COALESCE(ui.invalid_count, 0)::INTEGER as invalid_issues,
                     COALESCE(uv.total_points, 0)::INTEGER as total_points,
-                    (COALESCE(ui.invalid_count, 0) * 5)::INTEGER as penalty_points,
-                    (COALESCE(uv.total_points, 0) - COALESCE(ui.invalid_count, 0) * 5)::INTEGER as net_points,
+                    COALESCE(ui.penalty_points, 0)::INTEGER as penalty_points,
+                    (COALESCE(uv.total_points, 0) - COALESCE(ui.penalty_points, 0))::INTEGER as net_points,
                     COALESCE(uw.weight, 0.0)::FLOAT8 as score,
                     COALESCE(uw.is_penalized, false) as is_penalized,
                     GREATEST(uv.last_valid, up.last_pending) as last_activity
