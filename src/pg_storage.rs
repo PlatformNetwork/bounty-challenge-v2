@@ -1153,39 +1153,50 @@ impl PgStorage {
         let new_labels: Vec<String> = issue.label_names();
         let has_valid = new_labels.contains(&"valid".to_string());
         let has_invalid = new_labels.contains(&"invalid".to_string());
+        let is_closed = issue.state == "closed";
 
-        // Check previous labels
+        // Check previous state and labels
         let prev_row = client
             .query_opt(
-                "SELECT labels FROM github_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                "SELECT labels, state FROM github_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
                 &[&repo_owner, &repo_name, &(issue.number as i64)],
             )
             .await?;
 
-        let (had_valid, had_invalid) = match prev_row {
+        let (had_valid, had_invalid, _was_closed) = match prev_row {
             Some(r) => {
                 let prev_labels: Vec<String> = r.get(0);
-                (prev_labels.contains(&"valid".to_string()), prev_labels.contains(&"invalid".to_string()))
+                let prev_state: String = r.get(1);
+                (
+                    prev_labels.contains(&"valid".to_string()), 
+                    prev_labels.contains(&"invalid".to_string()),
+                    prev_state == "closed"
+                )
             }
-            None => (false, false),
+            None => (false, false, false),
         };
+
+        // Helper to check if already recorded as invalid
+        let already_recorded_invalid = client
+            .query_opt(
+                "SELECT 1 FROM invalid_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
+                &[&repo_owner, &repo_name, &(issue.number as i64)],
+            )
+            .await?
+            .is_some();
 
         // Detect changes OR first-time sync with labels
         let change = if has_invalid && !had_invalid {
-            // Check if already recorded as invalid
-            let already_recorded = client
-                .query_opt(
-                    "SELECT 1 FROM invalid_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
-                    &[&repo_owner, &repo_name, &(issue.number as i64)],
-                )
-                .await?
-                .is_some();
-            
-            if !already_recorded {
-                LabelChange::BecameInvalid // Record it
+            // Explicitly marked as invalid
+            if !already_recorded_invalid {
+                LabelChange::BecameInvalid
             } else {
                 LabelChange::None
             }
+        } else if is_closed && !has_valid && !has_invalid && !already_recorded_invalid {
+            // CRITICAL FIX: Issue closed without 'valid' label = invalid
+            // This catches issues that are closed but never got the valid label
+            LabelChange::ClosedWithoutValid
         } else if had_valid && !has_valid {
             LabelChange::LostValid
         } else if has_valid && !had_valid {
@@ -1199,7 +1210,7 @@ impl PgStorage {
                 .is_some();
             
             if !already_credited {
-                LabelChange::BecameValid // Treat as new valid to trigger credit
+                LabelChange::BecameValid
             } else {
                 LabelChange::None
             }
@@ -1214,22 +1225,14 @@ impl PgStorage {
                 .is_some();
             
             if !already_credited {
-                LabelChange::BecameValid // Treat as new valid to trigger credit
+                LabelChange::BecameValid
             } else {
                 LabelChange::None
             }
         } else if has_invalid && had_invalid {
-            // Already invalid - check if already recorded
-            let already_recorded = client
-                .query_opt(
-                    "SELECT 1 FROM invalid_issues WHERE repo_owner = $1 AND repo_name = $2 AND issue_id = $3",
-                    &[&repo_owner, &repo_name, &(issue.number as i64)],
-                )
-                .await?
-                .is_some();
-            
-            if !already_recorded {
-                LabelChange::BecameInvalid // Record it
+            // Already has invalid label - check if already recorded
+            if !already_recorded_invalid {
+                LabelChange::BecameInvalid
             } else {
                 LabelChange::None
             }
@@ -1308,6 +1311,30 @@ impl PgStorage {
                         ],
                     )
                     .await?;
+            }
+            LabelChange::ClosedWithoutValid => {
+                // Issue closed without 'valid' label = counts as invalid (-1 point penalty)
+                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
+                
+                client
+                    .execute(
+                        "INSERT INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Closed without valid label')
+                         ON CONFLICT (repo_owner, repo_name, issue_id) DO NOTHING",
+                        &[
+                            &(issue.number as i64),
+                            &repo_owner,
+                            &repo_name,
+                            &issue.user.login.to_lowercase(),
+                            &hotkey,
+                            &issue.html_url,
+                            &issue.title,
+                        ],
+                    )
+                    .await?;
+                
+                warn!("Issue #{} in {}/{} CLOSED WITHOUT VALID LABEL - recorded as invalid for @{}", 
+                      issue.number, repo_owner, repo_name, issue.user.login);
             }
             LabelChange::None => {}
         }
@@ -1728,6 +1755,8 @@ pub enum LabelChange {
     BecameValid,
     BecameInvalid,
     LostValid,
+    /// Issue was closed without the 'valid' label - counts as invalid
+    ClosedWithoutValid,
 }
 
 #[derive(Debug, Clone, Serialize)]
