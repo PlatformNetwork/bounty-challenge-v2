@@ -86,6 +86,9 @@ pub struct LeaderboardEntry {
     pub total_points: i32,
     pub penalty_points: i32,
     pub net_points: i32,
+    pub star_count: i32,
+    pub starred_repos: Vec<String>,
+    pub star_bonus: i32,
     pub score: f64,
     pub is_penalized: bool,
     pub last_activity: Option<DateTime<Utc>>,
@@ -720,7 +723,7 @@ impl PgStorage {
     pub async fn get_extended_leaderboard(&self, limit: i32) -> Result<Vec<LeaderboardEntry>> {
         let client = self.pool.get().await?;
 
-        // Get all users with valid issues, pending issues, invalid issues, points, and weights
+        // Get all users with valid issues, pending issues, invalid issues, points, stars and weights
         let rows = client
             .query(
                 "WITH user_valid AS (
@@ -731,6 +734,15 @@ impl PgStorage {
                         MAX(ri.resolved_at) as last_valid
                     FROM github_registrations r
                     JOIN resolved_issues ri ON r.hotkey = ri.hotkey
+                    GROUP BY r.hotkey
+                ),
+                user_valid_24h AS (
+                    SELECT 
+                        r.hotkey,
+                        COUNT(*) as valid_count_24h
+                    FROM github_registrations r
+                    JOIN resolved_issues ri ON r.hotkey = ri.hotkey
+                    WHERE ri.resolved_at >= NOW() - INTERVAL '24 hours'
                     GROUP BY r.hotkey
                 ),
                 user_invalid AS (
@@ -753,6 +765,14 @@ impl PgStorage {
                       AND NOT 'invalid' = ANY(labels)
                     GROUP BY LOWER(github_username)
                 ),
+                user_stars AS (
+                    SELECT 
+                        LOWER(github_username) as username,
+                        COUNT(*) as star_count,
+                        ARRAY_AGG(repo_owner || '/' || repo_name ORDER BY repo_owner, repo_name) as starred_repos
+                    FROM github_stars
+                    GROUP BY LOWER(github_username)
+                ),
                 user_weights AS (
                     SELECT github_username, hotkey, weight, is_penalized
                     FROM current_weights
@@ -766,13 +786,21 @@ impl PgStorage {
                     COALESCE(uv.total_points, 0)::INTEGER as total_points,
                     COALESCE(ui.penalty_points, 0)::INTEGER as penalty_points,
                     (COALESCE(uv.total_points, 0) - COALESCE(ui.penalty_points, 0))::INTEGER as net_points,
+                    COALESCE(us.star_count, 0)::INTEGER as star_count,
+                    COALESCE(us.starred_repos, ARRAY[]::TEXT[]) as starred_repos,
+                    CASE 
+                        WHEN COALESCE(uv24.valid_count_24h, 0) >= 2 THEN COALESCE(us.star_count, 0)
+                        ELSE 0
+                    END::INTEGER as star_bonus,
                     COALESCE(uw.weight, 0.0)::FLOAT8 as score,
                     COALESCE(uw.is_penalized, false) as is_penalized,
                     GREATEST(uv.last_valid, up.last_pending) as last_activity
                 FROM github_registrations r
                 LEFT JOIN user_valid uv ON r.hotkey = uv.hotkey
+                LEFT JOIN user_valid_24h uv24 ON r.hotkey = uv24.hotkey
                 LEFT JOIN user_invalid ui ON r.hotkey = ui.hotkey
                 LEFT JOIN user_pending up ON LOWER(r.github_username) = up.username
+                LEFT JOIN user_stars us ON LOWER(r.github_username) = us.username
                 LEFT JOIN user_weights uw ON LOWER(r.github_username) = LOWER(uw.github_username)
                 WHERE COALESCE(uv.valid_count, 0) > 0 OR COALESCE(up.pending_count, 0) > 0 OR COALESCE(ui.invalid_count, 0) > 0
                 ORDER BY score DESC, net_points DESC, last_activity DESC NULLS LAST
@@ -792,9 +820,12 @@ impl PgStorage {
                 total_points: r.get(5),
                 penalty_points: r.get(6),
                 net_points: r.get(7),
-                score: r.get(8),
-                is_penalized: r.get(9),
-                last_activity: r.get(10),
+                star_count: r.get(8),
+                starred_repos: r.get(9),
+                star_bonus: r.get(10),
+                score: r.get(11),
+                is_penalized: r.get(12),
+                last_activity: r.get(13),
             })
             .collect())
     }

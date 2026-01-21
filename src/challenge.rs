@@ -229,6 +229,9 @@ impl BountyChallenge {
                     "total_points": e.total_points,
                     "penalty_points": e.penalty_points,
                     "net_points": e.net_points,
+                    "star_count": e.star_count,
+                    "starred_repos": e.starred_repos,
+                    "star_bonus": e.star_bonus,
                     "is_penalized": e.is_penalized,
                     "last_activity": e.last_activity,
                 })
