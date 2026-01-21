@@ -68,13 +68,11 @@ Bounty Challenge uses a **point-based reward system**.
 
 ### Point System
 
-Each resolved issue gives you points based on the repository:
+Each resolved issue gives you points:
 
 | Repository | Points per Issue | Issues for 100% |
 |------------|-----------------|-----------------|
 | **CortexLM/cortex** | 5 points | 20 issues |
-| **PlatformNetwork/term-challenge** | 1 point | 100 issues |
-| **CortexLM/vgrep** | 1 point | 100 issues |
 
 ### Weight Calculation
 
@@ -91,9 +89,8 @@ Where:
 | Miner | Issues | Repository | Points | Weight |
 |-------|--------|------------|--------|--------|
 | A | 7 | cortex | 7 × 5 = 35 | 35% |
-| B | 7 | vgrep | 7 × 1 = 7 | 7% |
+| B | 10 | cortex | 10 × 5 = 50 | 50% |
 | C | 20 | cortex | 20 × 5 = 100 | 100% |
-| D | 100 | term-challenge | 100 × 1 = 100 | 100% |
 
 See [Scoring Documentation](docs/reference/scoring.md) for complete specifications.
 
@@ -144,19 +141,17 @@ Earn extra credits by starring our repositories!
 - Miner with 5 valid issues + 3 starred repos = base weight + 0.75 bonus
 - Miner with 1 valid issue + 5 starred repos = base weight only (need 2+ valid issues first)
 
-## Target Repositories
+## Target Repository
 
-Analyze these projects to find bugs, security issues, and improvements:
+Analyze this project to find bugs, security issues, and improvements:
 
 | Repository | Description | Points | For 100% Weight | URL |
 |------------|-------------|--------|-----------------|-----|
 | **CortexLM/cortex** | Cortex CLI and core | **5 points** | 20 issues | https://github.com/CortexLM/cortex |
-| **PlatformNetwork/term-challenge** | Terminal Bench Challenge | **1 point** | 100 issues | https://github.com/PlatformNetwork/term-challenge |
-| **CortexLM/vgrep** | Visual grep tool | **1 point** | 100 issues | https://github.com/CortexLM/vgrep |
 
-> **Note:** 100 points = 100% weight. A valid issue in cortex gives 5x more points than vgrep/term-challenge!
+> **Note:** 100 points = 100% weight. 20 valid issues in cortex = maximum weight!
 
-> **Important:** Analyze the repositories above for bugs, then submit your issue reports to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
+> **Important:** Analyze the Cortex repository for bugs, then submit your issue reports to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
 
 ## Quick Start for Miners
 
@@ -212,7 +207,7 @@ Go to the bounty-challenge repository and create issues:
 |------------|-----|
 | **PlatformNetwork/bounty-challenge** | https://github.com/PlatformNetwork/bounty-challenge/issues |
 
-You can report issues about any target project (see Target Repositories above) but they must be submitted HERE to count for rewards.
+You can report issues about the Cortex project (see Target Repository above) but they must be submitted HERE to count for rewards.
 
 Valid issue types:
 
@@ -273,7 +268,7 @@ bounty leaderboard
 | **PlatformNetwork/bounty-challenge** | https://github.com/PlatformNetwork/bounty-challenge/issues | ✅ Rewards eligible |
 | Other repositories | - | ❌ Not counted |
 
-Report bugs, security issues, or feature requests about any target project in the bounty-challenge repo.
+Report bugs, security issues, or feature requests about the Cortex project in the bounty-challenge repo.
 
 ## Anti-Abuse Mechanisms
 

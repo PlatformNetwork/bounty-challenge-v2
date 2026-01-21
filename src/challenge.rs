@@ -209,7 +209,7 @@ impl BountyChallenge {
     }
 
     pub async fn get_leaderboard(&self) -> Result<Vec<serde_json::Value>, ChallengeError> {
-        // Get extended leaderboard (includes users with pending issues)
+        // Get extended leaderboard (includes users with pending issues and detailed scoring)
         let entries = self
             .storage
             .get_extended_leaderboard(100)
@@ -222,9 +222,13 @@ impl BountyChallenge {
                 json!({
                     "miner_hotkey": e.hotkey,
                     "github_username": e.github_username,
+                    "score": e.score,
                     "valid_issues": e.valid_issues,
+                    "invalid_issues": e.invalid_issues,
                     "pending_issues": e.pending_issues,
-                    "weight": e.weight,
+                    "total_points": e.total_points,
+                    "penalty_points": e.penalty_points,
+                    "net_points": e.net_points,
                     "is_penalized": e.is_penalized,
                     "last_activity": e.last_activity,
                 })
