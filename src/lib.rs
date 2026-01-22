@@ -23,6 +23,7 @@ pub mod auth;
 pub mod challenge;
 pub mod config;
 pub mod discovery;
+pub mod gh_cli;
 pub mod github;
 pub mod github_oauth;
 pub mod metagraph;
@@ -31,7 +32,8 @@ pub mod server;
 
 pub use auth::{is_valid_ss58_hotkey, verify_signature};
 pub use challenge::BountyChallenge;
-pub use github::GitHubClient;
+pub use gh_cli::{GhCli, GhIssue, sync_repo_with_gh, SyncResult as GhSyncResult};
+pub use github::{GitHubClient, RateLimitInfo};
 pub use github_oauth::GitHubDeviceAuth;
 pub use metagraph::MetagraphCache;
 pub use pg_storage::{calculate_weight_from_points, PgStorage, WEIGHT_PER_POINT, MAX_POINTS_FOR_FULL_WEIGHT};

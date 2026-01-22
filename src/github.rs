@@ -1,11 +1,47 @@
 //! GitHub API client for fetching issues
+//!
+//! Supports authentication via environment variables:
+//! - EXTRA_GITHUB_TOKEN (priority, passed from platform-server)
+//! - GITHUB_TOKEN (fallback)
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
+
+/// Minimum remaining requests before we start throttling
+const RATE_LIMIT_THRESHOLD: u32 = 100;
+
+/// Get GitHub token from environment (EXTRA_GITHUB_TOKEN takes priority)
+fn get_github_token() -> Option<String> {
+    std::env::var("EXTRA_GITHUB_TOKEN")
+        .or_else(|_| std::env::var("GITHUB_TOKEN"))
+        .ok()
+}
+
+/// Rate limit information from GitHub API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitInfo {
+    pub limit: u32,
+    pub remaining: u32,
+    pub reset: i64,
+    pub used: u32,
+}
+
+impl RateLimitInfo {
+    /// Check if we're running low on API calls
+    pub fn is_low(&self) -> bool {
+        self.remaining < RATE_LIMIT_THRESHOLD
+    }
+
+    /// Seconds until rate limit resets
+    pub fn seconds_until_reset(&self) -> i64 {
+        let now = Utc::now().timestamp();
+        (self.reset - now).max(0)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubIssue {
@@ -64,11 +100,17 @@ pub struct GitHubClient {
 
 impl GitHubClient {
     pub fn new(owner: impl Into<String>, repo: impl Into<String>) -> Self {
+        let token = get_github_token();
+        if token.is_some() {
+            info!("GitHub client initialized with authentication token");
+        } else {
+            warn!("GitHub client initialized WITHOUT token - rate limits will be very low (60/hour)");
+        }
         Self {
             client: reqwest::Client::new(),
             owner: owner.into(),
             repo: repo.into(),
-            token: std::env::var("GITHUB_TOKEN").ok(),
+            token,
         }
     }
 
@@ -77,18 +119,98 @@ impl GitHubClient {
         self
     }
 
+    /// Check if authenticated
+    pub fn is_authenticated(&self) -> bool {
+        self.token.is_some()
+    }
+
     fn build_request(&self, url: &str) -> reqwest::RequestBuilder {
         let mut req = self
             .client
             .get(url)
             .header("User-Agent", "bounty-challenge/0.1.0")
-            .header("Accept", "application/vnd.github+json");
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
 
         if let Some(token) = &self.token {
             req = req.header("Authorization", format!("Bearer {}", token));
         }
 
         req
+    }
+
+    /// Check GitHub API rate limit status (heartbeat)
+    pub async fn check_rate_limit(&self) -> Result<RateLimitInfo> {
+        let url = format!("{}/rate_limit", GITHUB_API_BASE);
+        let response = self.build_request(&url).send().await?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to check rate limit: {}", response.status());
+        }
+
+        #[derive(Deserialize)]
+        struct RateLimitResponse {
+            rate: RateLimitCore,
+        }
+        #[derive(Deserialize)]
+        struct RateLimitCore {
+            limit: u32,
+            remaining: u32,
+            reset: i64,
+            used: u32,
+        }
+
+        let data: RateLimitResponse = response.json().await?;
+        Ok(RateLimitInfo {
+            limit: data.rate.limit,
+            remaining: data.rate.remaining,
+            reset: data.rate.reset,
+            used: data.rate.used,
+        })
+    }
+
+    /// Parse rate limit headers from response
+    fn parse_rate_limit_headers(response: &reqwest::Response) -> Option<RateLimitInfo> {
+        let limit = response
+            .headers()
+            .get("x-ratelimit-limit")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())?;
+        let remaining = response
+            .headers()
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())?;
+        let reset = response
+            .headers()
+            .get("x-ratelimit-reset")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())?;
+        let used = response
+            .headers()
+            .get("x-ratelimit-used")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        Some(RateLimitInfo {
+            limit,
+            remaining,
+            reset,
+            used,
+        })
+    }
+
+    /// Wait if rate limit is low
+    async fn handle_rate_limit(&self, rate_info: &RateLimitInfo) {
+        if rate_info.is_low() {
+            let wait_secs = rate_info.seconds_until_reset().min(300) as u64; // Max 5 min wait
+            warn!(
+                "GitHub rate limit low ({}/{} remaining), waiting {} seconds",
+                rate_info.remaining, rate_info.limit, wait_secs
+            );
+            tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
+        }
     }
 
     pub async fn get_closed_issues_with_valid(
@@ -244,7 +366,7 @@ pub struct BountyVerification {
 /// Fetch all stargazers for a repository
 pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
     let client = reqwest::Client::new();
-    let token = std::env::var("GITHUB_TOKEN").ok();
+    let token = get_github_token();
     
     let mut all_stargazers = Vec::new();
     let mut page = 1;
