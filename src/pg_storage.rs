@@ -268,6 +268,21 @@ impl PgStorage {
             info!("Applied migration 008_cleanup");
         }
 
+        // Check for admin_bonus migration (version 9)
+        let has_admin_bonus: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 9)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_admin_bonus {
+            let migration_sql = include_str!("../migrations/009_admin_bonus.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 009_admin_bonus");
+        }
+
         Ok(())
     }
 
@@ -1186,17 +1201,15 @@ impl PgStorage {
             .is_some();
 
         // Detect changes OR first-time sync with labels
+        // IMPORTANT: Only issues with "invalid" label are invalid
+        // Closed issues without "valid" label are just closed (no bounty), NOT invalid
         let change = if has_invalid && !had_invalid {
-            // Explicitly marked as invalid
+            // Explicitly marked as invalid by maintainers
             if !already_recorded_invalid {
                 LabelChange::BecameInvalid
             } else {
                 LabelChange::None
             }
-        } else if is_closed && !has_valid && !has_invalid && !already_recorded_invalid {
-            // CRITICAL FIX: Issue closed without 'valid' label = invalid
-            // This catches issues that are closed but never got the valid label
-            LabelChange::ClosedWithoutValid
         } else if had_valid && !has_valid {
             LabelChange::LostValid
         } else if has_valid && !had_valid {
@@ -1311,30 +1324,6 @@ impl PgStorage {
                         ],
                     )
                     .await?;
-            }
-            LabelChange::ClosedWithoutValid => {
-                // Issue closed without 'valid' label = counts as invalid (-1 point penalty)
-                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
-                
-                client
-                    .execute(
-                        "INSERT INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Closed without valid label')
-                         ON CONFLICT (repo_owner, repo_name, issue_id) DO NOTHING",
-                        &[
-                            &(issue.number as i64),
-                            &repo_owner,
-                            &repo_name,
-                            &issue.user.login.to_lowercase(),
-                            &hotkey,
-                            &issue.html_url,
-                            &issue.title,
-                        ],
-                    )
-                    .await?;
-                
-                warn!("Issue #{} in {}/{} CLOSED WITHOUT VALID LABEL - recorded as invalid for @{}", 
-                      issue.number, repo_owner, repo_name, issue.user.login);
             }
             LabelChange::None => {}
         }
@@ -1668,6 +1657,129 @@ impl PgStorage {
             issues_synced: r.get(4),
         }).collect())
     }
+
+    // ========================================================================
+    // ADMIN BONUS METHODS
+    // ========================================================================
+
+    /// Grant an admin bonus to a hotkey (valid for 24h by default)
+    pub async fn grant_admin_bonus(
+        &self,
+        hotkey: &str,
+        bonus_weight: f64,
+        reason: Option<&str>,
+        granted_by: &str,
+        duration_hours: Option<i32>,
+    ) -> Result<AdminBonus> {
+        let client = self.pool.get().await?;
+        let hours = duration_hours.unwrap_or(24);
+        let interval_str = format!("{} hours", hours);
+        
+        let row = client.query_one(
+            "INSERT INTO admin_bonuses (hotkey, bonus_weight, reason, granted_by, expires_at)
+             VALUES ($1, $2, $3, $4, NOW() + $5::interval)
+             RETURNING id, hotkey, github_username, bonus_weight, reason, granted_by, 
+                       granted_at, expires_at, active,
+                       EXTRACT(EPOCH FROM (expires_at - NOW())) / 3600 as hours_remaining",
+            &[&hotkey, &bonus_weight, &reason, &granted_by, &interval_str],
+        ).await?;
+
+        Ok(AdminBonus {
+            id: row.get(0),
+            hotkey: row.get(1),
+            github_username: row.get(2),
+            bonus_weight: row.get(3),
+            reason: row.get(4),
+            granted_by: row.get(5),
+            granted_at: row.get(6),
+            expires_at: row.get(7),
+            active: row.get(8),
+            hours_remaining: row.get(9),
+        })
+    }
+
+    /// List all active (non-expired) admin bonuses
+    pub async fn list_active_bonuses(&self) -> Result<Vec<AdminBonus>> {
+        let client = self.pool.get().await?;
+        let rows = client.query(
+            "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
+                    granted_at, expires_at, hours_remaining
+             FROM active_admin_bonuses
+             ORDER BY expires_at ASC",
+            &[],
+        ).await?;
+
+        Ok(rows.iter().map(|r| AdminBonus {
+            id: r.get(0),
+            hotkey: r.get(1),
+            github_username: r.get(2),
+            bonus_weight: r.get(3),
+            reason: r.get(4),
+            granted_by: r.get(5),
+            granted_at: r.get(6),
+            expires_at: r.get(7),
+            active: true,
+            hours_remaining: r.get(8),
+        }).collect())
+    }
+
+    /// Revoke an admin bonus by ID
+    pub async fn revoke_bonus(&self, bonus_id: i32, revoked_by: &str) -> Result<bool> {
+        let client = self.pool.get().await?;
+        let result = client.execute(
+            "UPDATE admin_bonuses 
+             SET active = false, reason = COALESCE(reason, '') || ' [Revoked by ' || $2 || ']'
+             WHERE id = $1 AND active = true",
+            &[&bonus_id, &revoked_by],
+        ).await?;
+
+        Ok(result > 0)
+    }
+
+    /// Get admin bonus statistics
+    pub async fn get_bonus_stats(&self) -> Result<AdminBonusStats> {
+        let client = self.pool.get().await?;
+        let row = client.query_one(
+            "SELECT 
+                COUNT(*)::int as total_active,
+                COALESCE(SUM(bonus_weight), 0)::float8 as total_bonus_weight,
+                COUNT(DISTINCT hotkey)::int as unique_recipients
+             FROM active_admin_bonuses",
+            &[],
+        ).await?;
+
+        Ok(AdminBonusStats {
+            total_active: row.get(0),
+            total_bonus_weight: row.get(1),
+            unique_recipients: row.get(2),
+        })
+    }
+
+    /// Get bonuses for a specific hotkey
+    pub async fn get_bonuses_for_hotkey(&self, hotkey: &str) -> Result<Vec<AdminBonus>> {
+        let client = self.pool.get().await?;
+        let rows = client.query(
+            "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
+                    granted_at, expires_at, hours_remaining
+             FROM active_admin_bonuses
+             WHERE hotkey = $1
+             ORDER BY expires_at ASC",
+            &[&hotkey],
+        ).await?;
+
+        Ok(rows.iter().map(|r| AdminBonus {
+            id: r.get(0),
+            hotkey: r.get(1),
+            github_username: r.get(2),
+            bonus_weight: r.get(3),
+            reason: r.get(4),
+            granted_by: r.get(5),
+            granted_at: r.get(6),
+            expires_at: r.get(7),
+            active: true,
+            hours_remaining: r.get(8),
+        }).collect())
+    }
 }
 
 // ============================================================================
@@ -1753,10 +1865,9 @@ pub struct SyncStatus {
 pub enum LabelChange {
     None,
     BecameValid,
+    /// Issue explicitly marked with "invalid" label by maintainers
     BecameInvalid,
     LostValid,
-    /// Issue was closed without the 'valid' label - counts as invalid
-    ClosedWithoutValid,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1783,6 +1894,31 @@ pub struct StarStats {
 /// Formula: weight = min(points * 0.01, 1.0)
 pub fn calculate_weight_from_points(points: f64) -> f64 {
     (points * WEIGHT_PER_POINT).min(1.0)
+}
+
+// ============================================================================
+// ADMIN BONUS DATA STRUCTURES
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminBonus {
+    pub id: i32,
+    pub hotkey: String,
+    pub github_username: Option<String>,
+    pub bonus_weight: f64,
+    pub reason: Option<String>,
+    pub granted_by: String,
+    pub granted_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub active: bool,
+    pub hours_remaining: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminBonusStats {
+    pub total_active: i32,
+    pub total_bonus_weight: f64,
+    pub unique_recipients: i32,
 }
 
 #[cfg(test)]

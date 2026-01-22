@@ -308,7 +308,6 @@ pub async fn sync_repo_with_gh(
                     crate::pg_storage::LabelChange::BecameValid => result.became_valid += 1,
                     crate::pg_storage::LabelChange::BecameInvalid => result.became_invalid += 1,
                     crate::pg_storage::LabelChange::LostValid => result.lost_valid += 1,
-                    crate::pg_storage::LabelChange::ClosedWithoutValid => result.closed_without_valid += 1,
                     crate::pg_storage::LabelChange::None => {}
                 }
             }
@@ -339,9 +338,9 @@ pub async fn sync_repo_with_gh(
 pub struct SyncResult {
     pub total_fetched: usize,
     pub became_valid: usize,
+    /// Issues explicitly marked with "invalid" label
     pub became_invalid: usize,
     pub lost_valid: usize,
-    pub closed_without_valid: usize,
     pub marked_deleted: usize,
     pub errors: usize,
 }
