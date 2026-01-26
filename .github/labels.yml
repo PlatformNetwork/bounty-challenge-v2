@@ -105,3 +105,12 @@
 - name: rewarded
   color: 2ea44f
   description: Reward has been credited
+
+# Version tracking labels
+- name: missing-version
+  color: e99695
+  description: Issue title missing version number
+
+- name: version-specified
+  color: c2e0c6
+  description: Version correctly specified in title

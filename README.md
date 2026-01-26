@@ -201,6 +201,17 @@ The wizard will:
 
 > **WARNING**: Issues must be created in **this repository** to be eligible for rewards!
 
+> **IMPORTANT**: You MUST include the version in your issue title. Issues without a version will be automatically closed.
+
+**Title Format:** `[TYPE] [vX.X.X] Description`
+
+Examples:
+- `[BUG] [v0.1.5] CLI crashes on startup`
+- `[FEATURE] [v0.2.0] Add export to JSON`
+- `[PERF] [v0.1.5] Slow response time on leaderboard`
+
+To find your version, run: `[app cli --version]`
+
 Go to the bounty-challenge repository and create issues:
 
 | Repository | URL |

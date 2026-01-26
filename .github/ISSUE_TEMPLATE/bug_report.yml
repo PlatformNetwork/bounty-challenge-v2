@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug to help us improve Bounty Challenge
-title: "[BUG] "
+title: "[BUG] [vX.X.X] "
 labels: ["bug", "needs-triage"]
 body:
   - type: markdown
@@ -8,6 +8,9 @@ body:
       value: |
         ## Bug Report
         Thank you for taking the time to report a bug. Please fill out the information below.
+        
+        > **IMPORTANT**: You MUST include the affected version in the issue title (e.g., `[BUG] [v0.1.5] Error on startup`).
+        > Issues without a version will be automatically closed.
 
   - type: dropdown
     id: project

@@ -1,6 +1,6 @@
 name: Performance Issue
 description: Report a performance or optimization problem
-title: "[PERF] "
+title: "[PERF] [vX.X.X] "
 labels: ["performance", "needs-triage"]
 body:
   - type: markdown
@@ -8,6 +8,9 @@ body:
       value: |
         ## Performance Issue
         Report slow performance, high resource usage, or optimization opportunities.
+        
+        > **IMPORTANT**: You MUST include the affected version in the issue title (e.g., `[PERF] [v0.1.5] Slow response`).
+        > Issues without a version will be automatically closed.
 
   - type: dropdown
     id: project

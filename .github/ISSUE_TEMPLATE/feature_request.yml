@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest a new feature or improvement
-title: "[FEATURE] "
+title: "[FEATURE] [vX.X.X] "
 labels: ["enhancement", "suggestion"]
 body:
   - type: markdown
@@ -8,6 +8,9 @@ body:
       value: |
         ## Feature Request
         Thank you for suggesting a feature! Please describe your idea below.
+        
+        > **IMPORTANT**: You MUST include the target version in the issue title (e.g., `[FEATURE] [v0.2.0] Add dark mode`).
+        > Issues without a version will be automatically closed.
 
   - type: dropdown
     id: project
