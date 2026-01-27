@@ -562,29 +562,44 @@ impl PgStorage {
     /// - 1 point per resolved issue (flat rate)
     /// - 0.25 points per starred repo
     /// - 100 points = 100% weight
+    /// - Negative net points = 0% weight
     pub async fn calculate_user_weight(&self, hotkey: &str) -> Result<f64> {
         let client = self.pool.get().await?;
 
-        // Get user's total points (1 point per issue) in last 24h
-        let issues_row = client
+        // Get user's valid points (1 point per issue) in last 24h
+        let valid_row = client
             .query_one(
                 "SELECT COUNT(*)::FLOAT8 FROM resolved_issues 
                  WHERE hotkey = $1 AND resolved_at >= NOW() - INTERVAL '24 hours'",
                 &[&hotkey],
             )
             .await?;
-        let issue_points: f64 = issues_row.get::<_, f64>(0);
+        let valid_points: f64 = valid_row.get::<_, f64>(0);
+
+        // Get user's invalid points (1 penalty per invalid issue) in last 24h
+        let invalid_row = client
+            .query_one(
+                "SELECT COUNT(*)::FLOAT8 FROM invalid_issues 
+                 WHERE hotkey = $1 AND recorded_at >= NOW() - INTERVAL '24 hours'",
+                &[&hotkey],
+            )
+            .await?;
+        let penalty_points: f64 = invalid_row.get::<_, f64>(0);
 
         // Get user's star bonus (0.25 points per starred repo)
         let github_username = self.get_github_by_hotkey(hotkey).await?.unwrap_or_default();
         let star_count = self.get_user_star_count(&github_username).await.unwrap_or(0);
         let star_points: f64 = star_count as f64 * 0.25;
 
-        // Total points = issues + stars
-        let total_points = issue_points + star_points;
+        // Net points = valid + stars - penalties
+        // If negative, weight is 0
+        let net_points = valid_points + star_points - penalty_points;
+        if net_points <= 0.0 {
+            return Ok(0.0);
+        }
 
         // Calculate weight: points * 0.01, capped at 1.0 (100%)
-        let weight = (total_points * WEIGHT_PER_POINT).min(1.0);
+        let weight = (net_points * WEIGHT_PER_POINT).min(1.0);
         Ok(weight)
     }
 
