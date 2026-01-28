@@ -776,7 +776,7 @@ impl PgStorage {
                     SELECT 
                         r.hotkey,
                         COUNT(*) as invalid_count,
-                        COUNT(*)::INTEGER as penalty_points
+                        (COUNT(*) * 2)::INTEGER as penalty_points  -- 2 penalty per invalid issue
                     FROM github_registrations r
                     JOIN invalid_issues ii ON r.hotkey = ii.hotkey
                     WHERE ii.recorded_at >= NOW() - INTERVAL '24 hours'
