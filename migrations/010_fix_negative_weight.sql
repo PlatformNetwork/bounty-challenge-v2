@@ -62,11 +62,11 @@ SELECT
     u.hotkey,
     u.issues_resolved_24h::bigint,
     (SELECT COUNT(*) FROM resolved_issues WHERE resolved_at >= NOW() - INTERVAL '24 hours')::int as total_issues_24h,
-    -- Weight = net_points * 0.01 + admin bonus, capped at 1.0
+    -- Weight = net_points * 0.02 + admin bonus, capped at 1.0 (50 points = 100%)
     -- If net_points <= 0, weight is 0 (penalized)
     CASE 
         WHEN u.net_points <= 0 THEN COALESCE(ab.total_admin_bonus, 0)  -- Only admin bonus if penalized
-        ELSE LEAST(u.net_points * 0.01 + COALESCE(ab.total_admin_bonus, 0), 1.0)
+        ELSE LEAST(u.net_points * 0.02 + COALESCE(ab.total_admin_bonus, 0), 1.0)
     END as weight,
     u.net_points <= 0 as is_penalized
 FROM user_net_points u

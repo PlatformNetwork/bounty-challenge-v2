@@ -11,10 +11,10 @@ use tokio_postgres::NoTls;
 use tracing::{debug, info, warn};
 
 /// Maximum points for full weight (100 points = 100%)
-pub const MAX_POINTS_FOR_FULL_WEIGHT: f64 = 100.0;
+pub const MAX_POINTS_FOR_FULL_WEIGHT: f64 = 50.0;
 
-/// Weight per point (1 point = 1% = 0.01)
-pub const WEIGHT_PER_POINT: f64 = 0.01;
+/// Weight per point (1 point = 2% = 0.02)
+pub const WEIGHT_PER_POINT: f64 = 0.02;
 
 /// Database pool configuration
 const DB_POOL_MAX_SIZE: usize = 20;
@@ -598,7 +598,7 @@ impl PgStorage {
             return Ok(0.0);
         }
 
-        // Calculate weight: points * 0.01, capped at 1.0 (100%)
+        // Calculate weight: points * 0.02, capped at 1.0 (100%)
         let weight = (net_points * WEIGHT_PER_POINT).min(1.0);
         Ok(weight)
     }
@@ -1897,7 +1897,7 @@ pub struct StarStats {
 /// - 0.25 points per starred repo
 /// - 100 points = 100% weight (capped)
 /// 
-/// Formula: weight = min(points * 0.01, 1.0)
+/// Formula: weight = min(points * 0.02, 1.0)
 pub fn calculate_weight_from_points(points: f64) -> f64 {
     (points * WEIGHT_PER_POINT).min(1.0)
 }
