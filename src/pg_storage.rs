@@ -1933,42 +1933,42 @@ mod tests {
 
     #[test]
     fn test_weight_from_points_basic() {
-        // 1 point = 1%
-        assert!((calculate_weight_from_points(1.0) - 0.01).abs() < 0.0001);
+        // 1 point = 2% (50 points = 100%)
+        assert!((calculate_weight_from_points(1.0) - 0.02).abs() < 0.0001);
         
-        // 10 points = 10%
-        assert!((calculate_weight_from_points(10.0) - 0.10).abs() < 0.0001);
+        // 10 points = 20%
+        assert!((calculate_weight_from_points(10.0) - 0.20).abs() < 0.0001);
         
-        // 50 points = 50%
-        assert!((calculate_weight_from_points(50.0) - 0.50).abs() < 0.0001);
+        // 25 points = 50%
+        assert!((calculate_weight_from_points(25.0) - 0.50).abs() < 0.0001);
     }
 
     #[test]
     fn test_weight_from_points_issues() {
-        // 7 issues = 7 points = 7%
+        // 7 issues = 7 points = 14%
         let issue_points = 7.0;
-        assert!((calculate_weight_from_points(issue_points) - 0.07).abs() < 0.0001);
+        assert!((calculate_weight_from_points(issue_points) - 0.14).abs() < 0.0001);
         
-        // 100 issues = 100 points = 100%
-        let issue_points = 100.0;
+        // 50 issues = 50 points = 100% (capped)
+        let issue_points = 50.0;
         assert!((calculate_weight_from_points(issue_points) - 1.0).abs() < 0.0001);
     }
 
     #[test]
     fn test_weight_from_points_with_stars() {
-        // 10 issues (10 pts) + 4 stars (1 pt) = 11 points = 11%
+        // 10 issues (10 pts) + 4 stars (1 pt) = 11 points = 22%
         let total_points = 10.0 + (4.0 * 0.25);
-        assert!((calculate_weight_from_points(total_points) - 0.11).abs() < 0.0001);
+        assert!((calculate_weight_from_points(total_points) - 0.22).abs() < 0.0001);
         
-        // 96 issues + 16 stars = 96 + 4 = 100 points = 100%
-        let total_points = 96.0 + (16.0 * 0.25);
+        // 48 issues + 8 stars = 48 + 2 = 50 points = 100%
+        let total_points = 48.0 + (8.0 * 0.25);
         assert!((calculate_weight_from_points(total_points) - 1.0).abs() < 0.0001);
     }
 
     #[test]
     fn test_weight_from_points_max_cap() {
-        // 200 points should still be capped at 100%
-        assert!((calculate_weight_from_points(200.0) - 1.0).abs() < 0.0001);
+        // 100 points should still be capped at 100%
+        assert!((calculate_weight_from_points(100.0) - 1.0).abs() < 0.0001);
     }
 
     #[test]
