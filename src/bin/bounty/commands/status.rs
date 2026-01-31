@@ -23,7 +23,7 @@ pub async fn run(rpc: &str, hotkey: &str) -> Result<()> {
     if let Some(leaderboard) = result["leaderboard"].as_array() {
         let miner = leaderboard
             .iter()
-            .find(|e| e["miner_hotkey"].as_str() == Some(hotkey));
+            .find(|e| e["hotkey"].as_str() == Some(hotkey));
 
         if let Some(entry) = miner {
             let github = entry["github_username"].as_str().unwrap_or("?");
@@ -31,7 +31,7 @@ pub async fn run(rpc: &str, hotkey: &str) -> Result<()> {
             let score = entry["score"].as_f64().unwrap_or(0.0);
             let rank = leaderboard
                 .iter()
-                .position(|e| e["miner_hotkey"].as_str() == Some(hotkey))
+                .position(|e| e["hotkey"].as_str() == Some(hotkey))
                 .map(|i| i + 1)
                 .unwrap_or(0);
 

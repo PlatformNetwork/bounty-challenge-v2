@@ -54,7 +54,7 @@ pub async fn run(rpc: &str) -> Result<()> {
 
     println!();
     println!("{}", style_bold("Target Repository:"));
-    println!("  https://github.com/CortexLM/fabric");
+    println!("  https://github.com/PlatformNetwork/bounty-challenge");
     println!();
     println!("{}", style_bold("Valid Issue Criteria:"));
     println!("  - Issue must be closed");

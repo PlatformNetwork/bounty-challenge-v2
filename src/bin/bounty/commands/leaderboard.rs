@@ -40,7 +40,7 @@ pub async fn run(rpc: &str, limit: usize) -> Result<()> {
             let github = entry["github_username"].as_str().unwrap_or("?");
             let issues = entry["valid_issues"].as_u64().unwrap_or(0);
             let score = entry["score"].as_f64().unwrap_or(0.0);
-            let hotkey = entry["miner_hotkey"].as_str().unwrap_or("?");
+            let hotkey = entry["hotkey"].as_str().unwrap_or("?");
 
             let rank = format!("#{}", i + 1);
             let hotkey_short = if hotkey.len() > 12 {
