@@ -1,13 +1,13 @@
 //! Bounty Challenge - Reward miners for valid GitHub issues
 //!
 //! This challenge incentivizes the discovery and reporting of valid bugs
-//! in the CortexLM/fabric repository. Miners earn rewards for submitting
+//! in the PlatformNetwork/bounty-challenge repository. Miners earn rewards for submitting
 //! issues that are closed with the "valid" label.
 //!
 //! # How it works
 //!
 //! 1. Miners register their GitHub username with their hotkey (via OAuth)
-//! 2. Miners create issues on CortexLM/fabric
+//! 2. Miners create issues on PlatformNetwork/bounty-challenge
 //! 3. Project maintainers review and close issues with "valid" label
 //! 4. Miners claim bounties by submitting issue numbers
 //! 5. Challenge verifies via GitHub API and assigns weights

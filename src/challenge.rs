@@ -220,7 +220,7 @@ impl BountyChallenge {
             .into_iter()
             .map(|e| {
                 json!({
-                    "miner_hotkey": e.hotkey,
+                    "hotkey": e.hotkey,
                     "github_username": e.github_username,
                     "score": e.score,
                     "valid_issues": e.valid_issues,
