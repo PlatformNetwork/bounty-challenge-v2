@@ -1,5 +1,5 @@
 //! Minimal health-only server for validator mode
-//! 
+//!
 //! When DATABASE_URL is not set, this lightweight server provides
 //! only /health and /get_weights endpoints for platform orchestration.
 
@@ -14,10 +14,7 @@ use tracing_subscriber::FmtSubscriber;
 static START_TIME: OnceCell<Instant> = OnceCell::const_new();
 
 async fn health() -> Json<serde_json::Value> {
-    let uptime = START_TIME
-        .get()
-        .map(|t| t.elapsed().as_secs())
-        .unwrap_or(0);
+    let uptime = START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
 
     Json(json!({
         "healthy": true,

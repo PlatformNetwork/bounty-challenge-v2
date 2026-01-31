@@ -46,7 +46,9 @@ impl GhIssue {
     }
 
     pub fn has_invalid_label(&self) -> bool {
-        self.labels.iter().any(|l| l.name.to_lowercase() == "invalid")
+        self.labels
+            .iter()
+            .any(|l| l.name.to_lowercase() == "invalid")
     }
 
     pub fn is_closed(&self) -> bool {
@@ -73,9 +75,13 @@ impl GhIssue {
                 login: self.author.login.clone(),
                 id: 0, // Not available from gh CLI
             },
-            labels: self.labels.iter().map(|l| crate::github::GitHubLabel {
-                name: l.name.clone(),
-            }).collect(),
+            labels: self
+                .labels
+                .iter()
+                .map(|l| crate::github::GitHubLabel {
+                    name: l.name.clone(),
+                })
+                .collect(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             closed_at: self.closed_at,
@@ -113,7 +119,7 @@ impl GhCli {
             .args(["auth", "status"])
             .output()
             .context("Failed to run gh auth status")?;
-        
+
         Ok(output.status.success())
     }
 
@@ -125,16 +131,24 @@ impl GhCli {
     /// List all issues (open and closed) using gh CLI
     /// This is the most reliable way to get all issues with proper pagination
     pub fn list_all_issues(&self) -> Result<Vec<GhIssue>> {
-        info!("Fetching all issues from {} using gh CLI", self.repo_string());
+        info!(
+            "Fetching all issues from {} using gh CLI",
+            self.repo_string()
+        );
 
         // gh issue list --repo owner/repo --state all --json fields --limit 1000
         let output = Command::new("gh")
             .args([
-                "issue", "list",
-                "--repo", &self.repo_string(),
-                "--state", "all",
-                "--limit", "10000", // High limit to get all issues
-                "--json", "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
+                "issue",
+                "list",
+                "--repo",
+                &self.repo_string(),
+                "--state",
+                "all",
+                "--limit",
+                "10000", // High limit to get all issues
+                "--json",
+                "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
             ])
             .env("GH_TOKEN", get_gh_token().unwrap_or_default())
             .output()
@@ -147,25 +161,38 @@ impl GhCli {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let issues: Vec<GhIssue> = serde_json::from_str(&stdout)
-            .context("Failed to parse gh issue list output")?;
+        let issues: Vec<GhIssue> =
+            serde_json::from_str(&stdout).context("Failed to parse gh issue list output")?;
 
-        info!("Fetched {} issues from {}", issues.len(), self.repo_string());
+        info!(
+            "Fetched {} issues from {}",
+            issues.len(),
+            self.repo_string()
+        );
         Ok(issues)
     }
 
     /// List only closed issues with valid label
     pub fn list_valid_bounties(&self) -> Result<Vec<GhIssue>> {
-        info!("Fetching valid bounties from {} using gh CLI", self.repo_string());
+        info!(
+            "Fetching valid bounties from {} using gh CLI",
+            self.repo_string()
+        );
 
         let output = Command::new("gh")
             .args([
-                "issue", "list",
-                "--repo", &self.repo_string(),
-                "--state", "closed",
-                "--label", "valid",
-                "--limit", "10000",
-                "--json", "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
+                "issue",
+                "list",
+                "--repo",
+                &self.repo_string(),
+                "--state",
+                "closed",
+                "--label",
+                "valid",
+                "--limit",
+                "10000",
+                "--json",
+                "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
             ])
             .env("GH_TOKEN", get_gh_token().unwrap_or_default())
             .output()
@@ -178,10 +205,14 @@ impl GhCli {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let issues: Vec<GhIssue> = serde_json::from_str(&stdout)
-            .context("Failed to parse gh issue list output")?;
+        let issues: Vec<GhIssue> =
+            serde_json::from_str(&stdout).context("Failed to parse gh issue list output")?;
 
-        info!("Fetched {} valid bounties from {}", issues.len(), self.repo_string());
+        info!(
+            "Fetched {} valid bounties from {}",
+            issues.len(),
+            self.repo_string()
+        );
         Ok(issues)
     }
 
@@ -191,10 +222,13 @@ impl GhCli {
 
         let output = Command::new("gh")
             .args([
-                "issue", "view",
+                "issue",
+                "view",
                 &number.to_string(),
-                "--repo", &self.repo_string(),
-                "--json", "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
+                "--repo",
+                &self.repo_string(),
+                "--json",
+                "number,title,body,state,author,labels,createdAt,updatedAt,closedAt,url",
             ])
             .env("GH_TOKEN", get_gh_token().unwrap_or_default())
             .output()
@@ -206,8 +240,8 @@ impl GhCli {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let issue: GhIssue = serde_json::from_str(&stdout)
-            .context("Failed to parse gh issue view output")?;
+        let issue: GhIssue =
+            serde_json::from_str(&stdout).context("Failed to parse gh issue view output")?;
 
         Ok(issue)
     }
@@ -226,7 +260,7 @@ impl GhCli {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         #[derive(Deserialize)]
         struct RateLimitResponse {
             rate: RateCore,
@@ -239,8 +273,8 @@ impl GhCli {
             used: u32,
         }
 
-        let data: RateLimitResponse = serde_json::from_str(&stdout)
-            .context("Failed to parse rate limit response")?;
+        let data: RateLimitResponse =
+            serde_json::from_str(&stdout).context("Failed to parse rate limit response")?;
 
         Ok(RateLimitStatus {
             limit: data.rate.limit,
@@ -290,7 +324,7 @@ pub async fn sync_repo_with_gh(
 
     // Fetch all issues via gh CLI
     let issues = gh.list_all_issues()?;
-    
+
     let mut result = SyncResult {
         total_fetched: issues.len(),
         ..Default::default()
@@ -303,14 +337,12 @@ pub async fn sync_repo_with_gh(
     for issue in &issues {
         let github_issue = issue.to_github_issue();
         match storage.upsert_issue(&github_issue, owner, repo).await {
-            Ok(change) => {
-                match change {
-                    crate::pg_storage::LabelChange::BecameValid => result.became_valid += 1,
-                    crate::pg_storage::LabelChange::BecameInvalid => result.became_invalid += 1,
-                    crate::pg_storage::LabelChange::LostValid => result.lost_valid += 1,
-                    crate::pg_storage::LabelChange::None => {}
-                }
-            }
+            Ok(change) => match change {
+                crate::pg_storage::LabelChange::BecameValid => result.became_valid += 1,
+                crate::pg_storage::LabelChange::BecameInvalid => result.became_invalid += 1,
+                crate::pg_storage::LabelChange::LostValid => result.lost_valid += 1,
+                crate::pg_storage::LabelChange::None => {}
+            },
             Err(e) => {
                 warn!("Failed to upsert issue #{}: {}", issue.number, e);
                 result.errors += 1;
@@ -319,15 +351,24 @@ pub async fn sync_repo_with_gh(
     }
 
     // Mark issues not returned by GitHub as deleted (transferred/removed)
-    let deleted = storage.mark_deleted_issues(owner, repo, &seen_issue_ids).await?;
+    let deleted = storage
+        .mark_deleted_issues(owner, repo, &seen_issue_ids)
+        .await?;
     result.marked_deleted = deleted as usize;
 
     // Update sync state
-    storage.update_sync_state(owner, repo, issues.len() as i32).await?;
+    storage
+        .update_sync_state(owner, repo, issues.len() as i32)
+        .await?;
 
     info!(
         "Sync complete for {}/{}: {} fetched, {} valid, {} invalid, {} deleted",
-        owner, repo, result.total_fetched, result.became_valid, result.became_invalid, result.marked_deleted
+        owner,
+        repo,
+        result.total_fetched,
+        result.became_valid,
+        result.became_invalid,
+        result.marked_deleted
     );
 
     Ok(result)
@@ -381,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_gh_issue() {
+    fn test_parse_gh_issue() -> Result<(), serde_json::Error> {
         let json = r#"{
             "number": 42,
             "title": "Test Issue",
@@ -395,10 +436,11 @@ mod tests {
             "url": "https://github.com/test/repo/issues/42"
         }"#;
 
-        let issue: GhIssue = serde_json::from_str(json).unwrap();
+        let issue: GhIssue = serde_json::from_str(json)?;
         assert_eq!(issue.number, 42);
         assert!(issue.has_valid_label());
         assert!(issue.is_closed());
         assert!(issue.is_valid_bounty());
+        Ok(())
     }
 }

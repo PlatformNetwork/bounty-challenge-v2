@@ -61,7 +61,11 @@ impl BountyDiscovery {
 
         for issue in issues {
             // Check if already credited
-            if self.storage.is_issue_recorded(&self.repo_owner, &self.repo_name, issue.number as i64).await? {
+            if self
+                .storage
+                .is_issue_recorded(&self.repo_owner, &self.repo_name, issue.number as i64)
+                .await?
+            {
                 debug!("Issue #{} already credited", issue.number);
                 result.already_claimed += 1;
                 continue;
@@ -73,15 +77,17 @@ impl BountyDiscovery {
             match self.storage.get_hotkey_by_github(&github_user).await? {
                 Some(hotkey) => {
                     // Auto-credit the bounty
-                    self.storage.record_resolved_issue(
-                        issue.number as i64,
-                        &self.repo_owner,
-                        &self.repo_name,
-                        &issue.user.login,
-                        &issue.html_url,
-                        Some(&issue.title),
-                        Utc::now(),
-                    ).await?;
+                    self.storage
+                        .record_resolved_issue(
+                            issue.number as i64,
+                            &self.repo_owner,
+                            &self.repo_name,
+                            &issue.user.login,
+                            &issue.html_url,
+                            Some(&issue.title),
+                            Utc::now(),
+                        )
+                        .await?;
 
                     info!(
                         "Auto-credited issue #{} to {} ({})",

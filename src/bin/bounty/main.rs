@@ -121,7 +121,11 @@ async fn main() {
 
     let result = match command {
         Commands::Wizard => wizard::run_register_wizard(&cli.rpc).await,
-        Commands::Server { host, port, database_url } => {
+        Commands::Server {
+            host,
+            port,
+            database_url,
+        } => {
             print_banner();
             commands::server::run(&host, port, &database_url).await
         }

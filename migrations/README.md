@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains SQLite migrations for the bounty-challenge database.
+This directory contains PostgreSQL migrations for the bounty-challenge database.
 
 ## Migration Files
 
@@ -41,9 +41,9 @@ Links miner hotkeys to GitHub usernames.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| miner_hotkey | TEXT | Primary key, SS58 address |
+| hotkey | TEXT | Primary key, SS58 address |
 | github_username | TEXT | GitHub username |
-| registered_at | TEXT | ISO 8601 timestamp |
+| registered_at | TIMESTAMP | UTC timestamp |
 
 ### validated_bounties
 Records claimed and validated bounties.
@@ -52,8 +52,8 @@ Records claimed and validated bounties.
 |--------|------|-------------|
 | issue_number | INTEGER | Primary key, GitHub issue number |
 | github_username | TEXT | Issue author's GitHub username |
-| miner_hotkey | TEXT | Claiming miner's hotkey |
-| validated_at | TEXT | ISO 8601 timestamp |
+| hotkey | TEXT | Claiming miner's hotkey |
+| validated_at | TIMESTAMP | UTC timestamp |
 | issue_url | TEXT | Full GitHub issue URL |
 
 ### schema_migrations
@@ -63,26 +63,26 @@ Tracks applied migrations.
 |--------|------|-------------|
 | version | INTEGER | Primary key, migration number |
 | name | TEXT | Migration filename |
-| applied_at | TEXT | ISO 8601 timestamp |
+| applied_at | TIMESTAMP | UTC timestamp |
 
 ## Manual Operations
 
 ### Check Applied Migrations
 ```bash
-sqlite3 bounty.db "SELECT * FROM schema_migrations ORDER BY version;"
+psql $DATABASE_URL -c "SELECT * FROM schema_migrations ORDER BY version;"
 ```
 
 ### View Bounty Stats
 ```bash
-sqlite3 bounty.db "
-SELECT miner_hotkey, COUNT(*) as bounties 
+psql $DATABASE_URL -c "
+SELECT hotkey, COUNT(*) as bounties 
 FROM validated_bounties 
-GROUP BY miner_hotkey 
+GROUP BY hotkey 
 ORDER BY bounties DESC;
 "
 ```
 
 ### Export Data
 ```bash
-sqlite3 -header -csv bounty.db "SELECT * FROM validated_bounties;" > bounties.csv
+psql $DATABASE_URL -c "\COPY (SELECT * FROM validated_bounties) TO 'bounties.csv' WITH CSV HEADER;"
 ```

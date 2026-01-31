@@ -5,7 +5,7 @@ This guide walks you through setting up Bounty Challenge and claiming your first
 ## Prerequisites
 
 - **Rust** 1.70 or later
-- **SQLite** (bundled with the project)
+- **PostgreSQL** 14+ (for server mode)
 - **GitHub Account** linked to your miner hotkey
 
 ## Installation
@@ -27,7 +27,7 @@ cargo build --release
 
 ```bash
 docker build -t bounty-challenge .
-docker run -p 8080:8080 -v ./data:/data bounty-challenge
+docker run -p 8080:8080 -e DATABASE_URL=postgres://user:pass@host:5432/bounty bounty-challenge
 ```
 
 ## Configuration
@@ -37,7 +37,7 @@ docker run -p 8080:8080 -v ./data:/data bounty-challenge
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GITHUB_TOKEN` | - | GitHub personal access token for API calls |
-| `BOUNTY_DB_PATH` | `bounty.db` | Path to SQLite database |
+| `DATABASE_URL` | - | PostgreSQL connection string (required for server) |
 | `CHALLENGE_HOST` | `0.0.0.0` | Server bind address |
 | `CHALLENGE_PORT` | `8080` | Server port |
 | `MAX_CONCURRENT` | `4` | Max concurrent evaluations |
@@ -103,7 +103,7 @@ Response:
 
 ### Step 2: Create a Valid Issue
 
-1. Go to [CortexLM/fabric/issues/new](https://github.com/CortexLM/fabric/issues/new)
+1. Go to [PlatformNetwork/bounty-challenge/issues/new](https://github.com/PlatformNetwork/bounty-challenge/issues/new)
 2. Create a detailed issue:
    - **Bug reports**: Include reproduction steps, expected vs actual behavior
    - **Feature requests**: Describe the use case and proposed solution

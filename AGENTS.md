@@ -45,7 +45,7 @@ flowchart LR
 |-----------|-------------|
 | **Platform Server** | Central orchestrator at `chain.platform.network` |
 | **Bridge API** | Routes all traffic through `/api/v1/bridge/bounty-challenge/` |
-| **Target Repos** | CortexLM/cortex, CortexLM/fabric (configurable) |
+| **Target Repos** | PlatformNetwork/bounty-challenge (this repository) |
 | **Valid Label** | Only issues with this label count for rewards |
 
 ### Where to Submit Issues
@@ -55,8 +55,6 @@ flowchart LR
 | Repository | Status |
 |------------|--------|
 | [PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues) | ✅ Rewards eligible |
-| CortexLM/cortex | ❌ Not counted for rewards |
-| CortexLM/fabric | ❌ Not counted for rewards |
 
 ---
 

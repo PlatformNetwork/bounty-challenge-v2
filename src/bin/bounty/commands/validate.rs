@@ -15,9 +15,6 @@ pub async fn run(platform_url: &str, hotkey: Option<String>) -> Result<()> {
     print_info("Validator mode connects to Platform Server and participates in consensus.");
     println!();
 
-    // TODO: Implement full validator mode
-    // For now, just verify connectivity
-
     let client = reqwest::Client::new();
 
     print_info("Checking Platform Server connectivity...");

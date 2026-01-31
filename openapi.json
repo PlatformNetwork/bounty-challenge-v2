@@ -83,8 +83,8 @@
                 "schema": { "$ref": "#/components/schemas/GetWeightsResponse" },
                 "example": {
                   "weights": [
-                    { "miner_hotkey": "5FHneW46...", "weight": 0.25 },
-                    { "miner_hotkey": "5GrwvaEF...", "weight": 0.15 }
+                    { "hotkey": "5FHneW46...", "weight": 0.25 },
+                    { "hotkey": "5GrwvaEF...", "weight": 0.15 }
                   ],
                   "epoch": 12345678,
                   "challenge_id": "bounty-challenge",
@@ -635,7 +635,7 @@
       "MinerWeight": {
         "type": "object",
         "properties": {
-          "miner_hotkey": { "type": "string" },
+          "hotkey": { "type": "string" },
           "weight": { "type": "number" }
         }
       },

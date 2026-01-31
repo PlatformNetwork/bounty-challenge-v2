@@ -209,11 +209,11 @@ Get current weight calculations for all miners.
 {
   "weights": [
     {
-      "miner_hotkey": "5GrwvaEF...",
+      "hotkey": "5GrwvaEF...",
       "weight": 0.35
     },
     {
-      "miner_hotkey": "5FHneW46...",
+      "hotkey": "5FHneW46...",
       "weight": 0.25
     }
   ],

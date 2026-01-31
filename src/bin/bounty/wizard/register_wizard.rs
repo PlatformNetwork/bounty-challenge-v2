@@ -48,10 +48,7 @@ pub async fn run_register_wizard(platform_url: &str) -> Result<()> {
     // Step 2: Enter GitHub username
     println!();
     println!("  {}", style("Step 2: Enter GitHub Username").bold());
-    println!(
-        "  {}",
-        style("The username you use to create issues").dim()
-    );
+    println!("  {}", style("The username you use to create issues").dim());
     println!();
 
     let github_username: String = Input::with_theme(&ColorfulTheme::default())
@@ -63,10 +60,7 @@ pub async fn run_register_wizard(platform_url: &str) -> Result<()> {
             if input.len() > 39 {
                 return Err("GitHub usernames are max 39 characters");
             }
-            if !input
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '-')
-            {
+            if !input.chars().all(|c| c.is_alphanumeric() || c == '-') {
                 return Err("Username can only contain alphanumeric and hyphens");
             }
             if input.starts_with('-') || input.ends_with('-') {
@@ -112,14 +106,18 @@ pub async fn run_register_wizard(platform_url: &str) -> Result<()> {
     pb.set_style(
         ProgressStyle::default_spinner()
             .template("  {spinner:.cyan} {msg}")
-            .unwrap(),
+            .expect("progress bar template should be valid"),
     );
     pb.set_message("Signing registration request...");
     pb.enable_steady_tick(Duration::from_millis(80));
 
     // Create signature
     let timestamp = chrono::Utc::now().timestamp();
-    let message = format!("register_github:{}:{}", github_username.to_lowercase(), timestamp);
+    let message = format!(
+        "register_github:{}:{}",
+        github_username.to_lowercase(),
+        timestamp
+    );
     let signature = signing_key.sign(message.as_bytes());
     let signature_hex = hex::encode(signature.0);
 
@@ -143,10 +141,7 @@ pub async fn run_register_wizard(platform_url: &str) -> Result<()> {
                 println!();
                 println!("  {}", style("═".repeat(50)).dim());
                 println!();
-                println!(
-                    "  {} Registration successful!",
-                    style("✓").green().bold()
-                );
+                println!("  {} Registration successful!", style("✓").green().bold());
                 println!();
                 println!(
                     "  Your GitHub account {} is now linked.",
@@ -171,7 +166,9 @@ pub async fn run_register_wizard(platform_url: &str) -> Result<()> {
                 );
                 println!();
             } else {
-                let error = response.error.unwrap_or_else(|| "Unknown error".to_string());
+                let error = response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string());
                 println!();
                 println!("  {} Registration failed: {}", style("✗").red(), error);
             }
@@ -216,7 +213,7 @@ fn enter_miner_key() -> Result<(sr25519::Pair, String)> {
 fn parse_miner_key(key: &str) -> Result<(sr25519::Pair, String)> {
     let key = key.trim();
     let key = key.strip_prefix("0x").unwrap_or(key);
-    
+
     // Try hex seed first (64 chars = 32 bytes)
     if key.len() == 64 {
         if let Ok(bytes) = hex::decode(key) {
@@ -253,7 +250,7 @@ fn encode_ss58(public_key: &[u8; 32]) -> String {
     use blake2::{Blake2b512, Digest};
 
     let prefix = SS58_PREFIX;
-    
+
     // Build the payload
     let mut payload = Vec::with_capacity(35);
     if prefix < 64 {

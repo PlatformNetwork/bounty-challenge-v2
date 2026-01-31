@@ -72,7 +72,7 @@ Each resolved issue gives you points:
 
 | Repository | Points per Issue | Issues for 100% |
 |------------|-----------------|-----------------|
-| **CortexLM/cortex** | 5 points | 20 issues |
+| **PlatformNetwork/bounty-challenge** | 5 points | 20 issues |
 
 ### Weight Calculation
 
@@ -147,11 +147,11 @@ Analyze this project to find bugs, security issues, and improvements:
 
 | Repository | Description | Points | For 100% Weight | URL |
 |------------|-------------|--------|-----------------|-----|
-| **CortexLM/cortex** | Cortex CLI and core | **5 points** | 20 issues | https://github.com/CortexLM/cortex |
+| **PlatformNetwork/bounty-challenge** | Bounty Challenge repository | **5 points** | 20 issues | https://github.com/PlatformNetwork/bounty-challenge |
 
 > **Note:** 100 points = 100% weight. 20 valid issues in cortex = maximum weight!
 
-> **Important:** Analyze the Cortex repository for bugs, then submit your issue reports to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
+> **Important:** Analyze the bounty-challenge repository for bugs, then submit your issue reports to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
 
 ## Quick Start for Miners
 
@@ -330,7 +330,6 @@ bounty-challenge/
 │   ├── challenge.rs         # Challenge implementation
 │   ├── github.rs            # GitHub API client
 │   ├── pg_storage.rs        # PostgreSQL storage
-│   ├── storage.rs           # SQLite storage (CLI)
 │   ├── server.rs            # HTTP server & routes
 │   ├── discovery.rs         # Auto-scan for valid issues
 │   └── bin/bounty/          # CLI application
@@ -339,8 +338,7 @@ bounty-challenge/
 │       ├── wizard/          # Registration wizard
 │       └── commands/        # CLI commands
 ├── migrations/
-│   ├── 001_initial.sql      # SQLite schema
-│   └── 002_rewards_schema.sql # PostgreSQL schema
+│   └── 001_initial.sql      # PostgreSQL schema
 ├── docs/
 │   ├── miner/               # Miner guides
 │   ├── reference/           # API references

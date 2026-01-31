@@ -100,7 +100,8 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
-sqlite_path = "bounty.db"
+# PostgreSQL URL from environment variable DATABASE_URL
+# Set DATABASE_URL environment variable for PostgreSQL connection
 
 [rewards]
 max_issues_for_full_emission = 250

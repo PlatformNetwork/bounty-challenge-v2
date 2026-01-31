@@ -32,8 +32,10 @@ pub mod server;
 
 pub use auth::{is_valid_ss58_hotkey, verify_signature};
 pub use challenge::BountyChallenge;
-pub use gh_cli::{GhCli, GhIssue, sync_repo_with_gh, SyncResult as GhSyncResult};
+pub use gh_cli::{sync_repo_with_gh, GhCli, GhIssue, SyncResult as GhSyncResult};
 pub use github::{GitHubClient, RateLimitInfo};
 pub use github_oauth::GitHubDeviceAuth;
 pub use metagraph::MetagraphCache;
-pub use pg_storage::{calculate_weight_from_points, PgStorage, WEIGHT_PER_POINT, MAX_POINTS_FOR_FULL_WEIGHT};
+pub use pg_storage::{
+    calculate_weight_from_points, PgStorage, MAX_POINTS_FOR_FULL_WEIGHT, WEIGHT_PER_POINT,
+};
