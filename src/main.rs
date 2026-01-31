@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
         error!("DATABASE_URL environment variable is required");
         anyhow::anyhow!("DATABASE_URL not set")
     })?;
-    
+
     let storage = Arc::new(PgStorage::new(&database_url).await?);
     info!("PostgreSQL storage initialized");
 
@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         // Initial sync after 10 seconds
         tokio::time::sleep(Duration::from_secs(10)).await;
-        
+
         let mut interval = tokio::time::interval(Duration::from_secs(SYNC_INTERVAL_SECS));
         loop {
             interval.tick().await;
@@ -57,14 +57,17 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-    info!("Background GitHub sync started (every {} seconds)", SYNC_INTERVAL_SECS);
+    info!(
+        "Background GitHub sync started (every {} seconds)",
+        SYNC_INTERVAL_SECS
+    );
 
     // Start background star sync task (every 5 minutes)
     let star_storage = storage.clone();
     tokio::spawn(async move {
         // Initial sync after 30 seconds
         tokio::time::sleep(Duration::from_secs(30)).await;
-        
+
         let mut interval = tokio::time::interval(Duration::from_secs(STAR_SYNC_INTERVAL_SECS));
         loop {
             interval.tick().await;
@@ -73,20 +76,26 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-    info!("Background star sync started (every {} seconds)", STAR_SYNC_INTERVAL_SECS);
+    info!(
+        "Background star sync started (every {} seconds)",
+        STAR_SYNC_INTERVAL_SECS
+    );
 
     // Start GitHub API heartbeat task (every 1 minute)
     tokio::spawn(async move {
         // Initial check after 5 seconds
         tokio::time::sleep(Duration::from_secs(5)).await;
-        
+
         let mut interval = tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
         loop {
             interval.tick().await;
             check_github_health().await;
         }
     });
-    info!("GitHub API heartbeat started (every {} seconds)", HEARTBEAT_INTERVAL_SECS);
+    info!(
+        "GitHub API heartbeat started (every {} seconds)",
+        HEARTBEAT_INTERVAL_SECS
+    );
 
     // Run our custom server with all endpoints
     bounty_challenge::server::run_server(&host, port, challenge, storage).await?;
@@ -98,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
 /// Uses gh CLI if available (more reliable), falls back to REST API
 async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
     let repos = storage.get_active_repos().await?;
-    
+
     if repos.is_empty() {
         warn!("No target repos configured for sync");
         return Ok(());
@@ -113,11 +122,11 @@ async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
     }
 
     info!("Starting GitHub sync for {} repos", repos.len());
-    
-    let mut total_synced = 0;
-    let mut total_valid = 0;
-    let mut total_invalid = 0;
-    
+
+    let mut _total_synced = 0;
+    let mut _total_valid = 0;
+    let mut _total_invalid = 0;
+
     for repo in repos {
         if use_gh_cli {
             // Use gh CLI (preferred)
@@ -125,20 +134,31 @@ async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
                 Ok(result) => {
                     info!(
                         "Synced {}/{}: {} issues, {} valid, {} invalid, {} deleted",
-                        repo.owner, repo.repo, 
-                        result.total_fetched, result.became_valid, 
-                        result.became_invalid, result.marked_deleted
+                        repo.owner,
+                        repo.repo,
+                        result.total_fetched,
+                        result.became_valid,
+                        result.became_invalid,
+                        result.marked_deleted
                     );
-                    total_synced += result.total_fetched;
-                    total_valid += result.became_valid;
-                    total_invalid += result.became_invalid;
+                    _total_synced += result.total_fetched;
+                    _total_valid += result.became_valid;
+                    _total_invalid += result.became_invalid;
                 }
                 Err(e) => {
-                    error!("Failed to sync {}/{} with gh CLI: {}", repo.owner, repo.repo, e);
+                    error!(
+                        "Failed to sync {}/{} with gh CLI: {}",
+                        repo.owner, repo.repo, e
+                    );
                     // Fallback to REST API on error
-                    if let Ok(count) = bounty_challenge::server::sync_repo(storage, &repo.owner, &repo.repo).await {
-                        info!("Fallback REST sync: {} issues from {}/{}", count, repo.owner, repo.repo);
-                        total_synced += count as usize;
+                    if let Ok(count) =
+                        bounty_challenge::server::sync_repo(storage, &repo.owner, &repo.repo).await
+                    {
+                        info!(
+                            "Fallback REST sync: {} issues from {}/{}",
+                            count, repo.owner, repo.repo
+                        );
+                        _total_synced += count as usize;
                     }
                 }
             }
@@ -149,7 +169,7 @@ async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
                     if count > 0 {
                         info!("Synced {} issues from {}/{}", count, repo.owner, repo.repo);
                     }
-                    total_synced += count as usize;
+                    _total_synced += count as usize;
                 }
                 Err(e) => {
                     error!("Failed to sync {}/{}: {}", repo.owner, repo.repo, e);
@@ -157,7 +177,7 @@ async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
             }
         }
     }
-    
+
     // Always show totals after sync
     match storage.get_issues_stats().await {
         Ok(stats) => {
@@ -170,52 +190,67 @@ async fn sync_all_repos(storage: &PgStorage) -> anyhow::Result<()> {
             warn!("Could not get stats: {}", e);
         }
     }
-    
+
     Ok(())
 }
 
 /// Sync stars from all target repos
 async fn sync_all_stars(storage: &PgStorage) -> anyhow::Result<()> {
     let repos = storage.get_star_target_repos().await?;
-    
+
     if repos.is_empty() {
         warn!("No star target repos configured for sync");
         return Ok(());
     }
 
     info!("Starting star sync for {} repos", repos.len());
-    
+
     let mut total_stars = 0;
     let mut new_stars = 0;
-    
+
     for repo in repos {
         match bounty_challenge::github::get_stargazers(&repo.owner, &repo.repo).await {
             Ok(stargazers) => {
                 total_stars += stargazers.len();
-                
+
                 for username in stargazers {
-                    if let Ok(is_new) = storage.upsert_star(&username, &repo.owner, &repo.repo).await {
+                    if let Ok(is_new) = storage
+                        .upsert_star(&username, &repo.owner, &repo.repo)
+                        .await
+                    {
                         if is_new {
                             new_stars += 1;
-                            info!("New star: @{} starred {}/{}", username, repo.owner, repo.repo);
+                            info!(
+                                "New star: @{} starred {}/{}",
+                                username, repo.owner, repo.repo
+                            );
                         }
                     }
                 }
-                
+
                 if let Err(e) = storage.update_star_sync(&repo.owner, &repo.repo).await {
-                    warn!("Failed to update star sync timestamp for {}/{}: {}", repo.owner, repo.repo, e);
+                    warn!(
+                        "Failed to update star sync timestamp for {}/{}: {}",
+                        repo.owner, repo.repo, e
+                    );
                 }
             }
             Err(e) => {
-                error!("Failed to fetch stargazers for {}/{}: {}", repo.owner, repo.repo, e);
+                error!(
+                    "Failed to fetch stargazers for {}/{}: {}",
+                    repo.owner, repo.repo, e
+                );
             }
         }
     }
-    
+
     if new_stars > 0 {
-        info!("Star sync complete: {} new stars (total {} stars tracked)", new_stars, total_stars);
+        info!(
+            "Star sync complete: {} new stars (total {} stars tracked)",
+            new_stars, total_stars
+        );
     }
-    
+
     Ok(())
 }
 
@@ -223,7 +258,7 @@ async fn sync_all_stars(storage: &PgStorage) -> anyhow::Result<()> {
 async fn check_github_health() {
     // Use a dummy client just for rate limit check (owner/repo don't matter for /rate_limit)
     let client = GitHubClient::new("platformnetwork", "bounty-challenge");
-    
+
     match client.check_rate_limit().await {
         Ok(rate_info) => {
             let status = if rate_info.is_low() { "LOW" } else { "OK" };
@@ -234,11 +269,11 @@ async fn check_github_health() {
                 rate_info.limit,
                 rate_info.seconds_until_reset()
             );
-            
+
             if !client.is_authenticated() {
                 warn!("GitHub API: Running WITHOUT authentication - set EXTRA_GITHUB_TOKEN or GITHUB_TOKEN for higher limits");
             }
-            
+
             if rate_info.is_low() {
                 warn!(
                     "GitHub rate limit critically low! {} remaining. Syncs may fail until reset.",
@@ -247,7 +282,10 @@ async fn check_github_health() {
             }
         }
         Err(e) => {
-            error!("GitHub API heartbeat FAILED: {} - API may be unavailable", e);
+            error!(
+                "GitHub API heartbeat FAILED: {} - API may be unavailable",
+                e
+            );
         }
     }
 }

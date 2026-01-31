@@ -77,7 +77,10 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthRespon
 }
 
 async fn config_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    Json(serde_json::to_value(state.challenge.config()).unwrap())
+    Json(
+        serde_json::to_value(state.challenge.config())
+            .expect("failed to serialize challenge config"),
+    )
 }
 
 async fn evaluate_handler(
@@ -156,7 +159,7 @@ async fn get_weights_handler(
         // Estimate epoch from current time (12 second blocks on Bittensor)
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system time should be after Unix epoch")
             .as_secs();
         now / 12
     });
@@ -191,17 +194,19 @@ async fn get_weights_handler(
     // Total may be < 1.0 if not enough global activity (remainder = burn)
 
     // Sort by weight descending
-    weights.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap());
+    weights.sort_by(|a, b| {
+        b.weight
+            .partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     info!(
         "Returning weights for {} miners at epoch {}",
-        weights.len(), epoch
+        weights.len(),
+        epoch
     );
 
-    Json(GetWeightsResponse {
-        epoch,
-        weights,
-    })
+    Json(GetWeightsResponse { epoch, weights })
 }
 
 // ============================================================================
@@ -253,7 +258,11 @@ async fn register_handler(
     }
 
     // Check if GitHub username is already registered with a DIFFERENT hotkey
-    if let Ok(Some(existing_hotkey)) = state.storage.get_hotkey_by_github(&request.github_username).await {
+    if let Ok(Some(existing_hotkey)) = state
+        .storage
+        .get_hotkey_by_github(&request.github_username)
+        .await
+    {
         if existing_hotkey != request.hotkey {
             return Json(RegisterResponse {
                 success: false,
@@ -332,7 +341,12 @@ async fn status_handler(
     Path(hotkey): Path<String>,
 ) -> Json<StatusResponse> {
     // Check if registered
-    let github_username = state.storage.get_github_by_hotkey(&hotkey).await.ok().flatten();
+    let github_username = state
+        .storage
+        .get_github_by_hotkey(&hotkey)
+        .await
+        .ok()
+        .flatten();
 
     if github_username.is_none() {
         return Json(StatusResponse {
@@ -348,15 +362,27 @@ async fn status_handler(
 
     // Get user balance (valid - invalid) from PostgreSQL
     let user_balance = state.storage.get_user_balance(&hotkey).await.ok().flatten();
-    
+
     let (valid_count, invalid_count, balance, is_penalized, weight) = match user_balance {
         Some(b) => {
-            let weight = if b.is_penalized { 0.0 } else {
-                state.storage.calculate_user_weight(&hotkey).await.unwrap_or(0.0)
+            let weight = if b.is_penalized {
+                0.0
+            } else {
+                state
+                    .storage
+                    .calculate_user_weight(&hotkey)
+                    .await
+                    .unwrap_or(0.0)
             };
-            (b.valid_count as u64, b.invalid_count as u64, b.balance, b.is_penalized, weight)
+            (
+                b.valid_count as u64,
+                b.invalid_count as u64,
+                b.balance,
+                b.is_penalized,
+                weight,
+            )
         }
-        None => (0, 0, 0, false, 0.0)
+        None => (0, 0, 0, false, 0.0),
     };
 
     Json(StatusResponse {
@@ -397,15 +423,19 @@ async fn invalid_handler(
     Json(request): Json<InvalidIssueRequest>,
 ) -> Json<InvalidIssueResponse> {
     // Record the invalid issue (async)
-    match state.storage.record_invalid_issue(
-        request.issue_id,
-        &request.repo_owner,
-        &request.repo_name,
-        &request.github_username,
-        &request.issue_url,
-        request.issue_title.as_deref(),
-        request.reason.as_deref(),
-    ).await {
+    match state
+        .storage
+        .record_invalid_issue(
+            request.issue_id,
+            &request.repo_owner,
+            &request.repo_name,
+            &request.github_username,
+            &request.issue_url,
+            request.issue_title.as_deref(),
+            request.reason.as_deref(),
+        )
+        .await
+    {
         Ok(()) => {
             info!(
                 "Recorded invalid issue #{} by @{}",
@@ -448,8 +478,12 @@ pub struct StatsResponse {
 async fn stats_handler(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
     // Get stats from PostgreSQL - ALL STATS ARE 24H ONLY
     let stats = state.storage.get_stats_24h().await.ok();
-    let current_weights = state.storage.get_current_weights().await.unwrap_or_default();
-    
+    let current_weights = state
+        .storage
+        .get_current_weights()
+        .await
+        .unwrap_or_default();
+
     // Count miners with activity in last 24h (weight > 0)
     let active_miners = current_weights.iter().filter(|w| w.weight > 0.0).count();
     // Count penalized miners (from current_weights which is 24h based)
@@ -484,12 +518,16 @@ async fn issues_handler(
     let limit = query.limit.unwrap_or(100).min(1000); // Allow viewing up to 1000 issues
     let offset = query.offset.unwrap_or(0);
 
-    match state.storage.get_issues(
-        query.state.as_deref(),
-        query.label.as_deref(),
-        limit,
-        offset,
-    ).await {
+    match state
+        .storage
+        .get_issues(
+            query.state.as_deref(),
+            query.label.as_deref(),
+            limit,
+            offset,
+        )
+        .await
+    {
         Ok(issues) => Json(serde_json::json!({
             "issues": issues,
             "count": issues.len(),
@@ -526,7 +564,7 @@ async fn pending_issues_handler(
 
 async fn issues_stats_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     match state.storage.get_issues_stats().await {
-        Ok(stats) => Json(serde_json::to_value(stats).unwrap()),
+        Ok(stats) => Json(serde_json::to_value(stats).expect("failed to serialize issues stats")),
         Err(e) => {
             error!("Failed to get issues stats: {}", e);
             Json(serde_json::json!({ "error": e.to_string() }))
@@ -539,7 +577,9 @@ async fn hotkey_details_handler(
     Path(hotkey): Path<String>,
 ) -> Json<serde_json::Value> {
     match state.storage.get_hotkey_details(&hotkey).await {
-        Ok(Some(details)) => Json(serde_json::to_value(details).unwrap()),
+        Ok(Some(details)) => {
+            Json(serde_json::to_value(details).expect("failed to serialize hotkey details"))
+        }
         Ok(None) => Json(serde_json::json!({ "error": "Hotkey not found" })),
         Err(e) => {
             error!("Failed to get hotkey details: {}", e);
@@ -553,7 +593,9 @@ async fn github_user_handler(
     Path(username): Path<String>,
 ) -> Json<serde_json::Value> {
     match state.storage.get_github_user_details(&username).await {
-        Ok(Some(details)) => Json(serde_json::to_value(details).unwrap()),
+        Ok(Some(details)) => {
+            Json(serde_json::to_value(details).expect("failed to serialize GitHub user details"))
+        }
         Ok(None) => Json(serde_json::json!({ "error": "GitHub user not found" })),
         Err(e) => {
             error!("Failed to get GitHub user details: {}", e);
@@ -609,33 +651,40 @@ async fn trigger_sync_handler(State(state): State<Arc<AppState>>) -> Json<serde_
 /// Fetches ALL issues from GitHub and marks missing ones as deleted
 pub async fn sync_repo(storage: &PgStorage, owner: &str, repo: &str) -> anyhow::Result<i32> {
     let github = crate::github::GitHubClient::new(owner, repo);
-    
+
     info!("Syncing all issues from {}/{}", owner, repo);
-    
+
     // Fetch ALL issues from GitHub (both open and closed)
     let issues = github.get_all_issues().await?;
     let count = issues.len() as i32;
-    
+
     // Collect issue IDs that we see from GitHub
     let seen_issue_ids: Vec<i64> = issues.iter().map(|i| i.number as i64).collect();
-    
+
     // Upsert each issue (this also clears deleted_at if issue reappears)
     for issue in &issues {
         storage.upsert_issue(issue, owner, repo).await?;
     }
-    
+
     // Mark issues not returned by GitHub as deleted (transferred/removed)
-    let deleted = storage.mark_deleted_issues(owner, repo, &seen_issue_ids).await?;
+    let deleted = storage
+        .mark_deleted_issues(owner, repo, &seen_issue_ids)
+        .await?;
     if deleted > 0 {
-        info!("Marked {} stale issues as deleted in {}/{}", deleted, owner, repo);
+        info!(
+            "Marked {} stale issues as deleted in {}/{}",
+            deleted, owner, repo
+        );
     }
-    
+
     // Update sync state
     storage.update_sync_state(owner, repo, count).await?;
-    
-    info!("Sync complete for {}/{}: {} issues from GitHub, {} marked deleted", 
-          owner, repo, count, deleted);
-    
+
+    info!(
+        "Sync complete for {}/{}: {} issues from GitHub, {} marked deleted",
+        owner, repo, count, deleted
+    );
+
     Ok(count)
 }
 

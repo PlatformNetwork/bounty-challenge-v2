@@ -40,7 +40,7 @@ echo "Rank | GitHub User      | Valid Issues | Score  | Hotkey"
 echo "-----|------------------|--------------|--------|------------------"
 
 echo "$RESPONSE" | jq -r '.results.leaderboard | to_entries | .[] | 
-    "\(.key + 1)    | \(.value.github_username | .[0:16] | . + " " * (16 - length)) | \(.value.valid_issues | tostring | . + " " * (12 - length)) | \(.value.score | tostring | .[0:6]) | \(.value.miner_hotkey | .[0:16])..."'
+    "\(.key + 1)    | \(.value.github_username | .[0:16] | . + " " * (16 - length)) | \(.value.valid_issues | tostring | . + " " * (12 - length)) | \(.value.score | tostring | .[0:6]) | \(.value.hotkey | .[0:16])..."'
 
 echo ""
 echo "Total miners: $ENTRIES"

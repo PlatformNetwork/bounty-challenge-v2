@@ -98,7 +98,7 @@ pub async fn run(rpc: &str, hotkey: &str) -> Result<()> {
         println!("Next steps:");
         println!(
             "  1. Create issues on {}",
-            style_cyan("https://github.com/CortexLM/fabric/issues")
+            style_cyan("https://github.com/PlatformNetwork/bounty-challenge/issues")
         );
         println!(
             "  2. Wait for maintainers to validate with '{}' label",

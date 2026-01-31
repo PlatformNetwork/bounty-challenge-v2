@@ -158,8 +158,8 @@ Claim bounties for validated issues.
   "score": 0.158,
   "results": {
     "claimed": [
-      {"issue_number": 42, "issue_url": "https://github.com/CortexLM/fabric/issues/42"},
-      {"issue_number": 55, "issue_url": "https://github.com/CortexLM/fabric/issues/55"}
+      {"issue_number": 42, "issue_url": "https://github.com/PlatformNetwork/bounty-challenge/issues/42"},
+      {"issue_number": 55, "issue_url": "https://github.com/PlatformNetwork/bounty-challenge/issues/55"}
     ],
     "rejected": [
       {"issue_number": 78, "reason": "Issue missing 'valid' label"}
@@ -208,14 +208,14 @@ Get current standings.
   "results": {
     "leaderboard": [
       {
-        "miner_hotkey": "5GrwvaEF...",
+        "hotkey": "5GrwvaEF...",
         "github_username": "octocat",
         "valid_issues": 5,
         "score": 0.258,
         "last_updated": "2024-01-15T10:30:00Z"
       },
       {
-        "miner_hotkey": "5FHneW46...",
+        "hotkey": "5FHneW46...",
         "github_username": "torvalds",
         "valid_issues": 3,
         "score": 0.2,

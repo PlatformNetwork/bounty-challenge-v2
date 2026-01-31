@@ -1,13 +1,13 @@
 //! Bounty Challenge - Reward miners for valid GitHub issues
 //!
 //! This challenge incentivizes the discovery and reporting of valid bugs
-//! in the CortexLM/fabric repository. Miners earn rewards for submitting
+//! in the PlatformNetwork/bounty-challenge repository. Miners earn rewards for submitting
 //! issues that are closed with the "valid" label.
 //!
 //! # How it works
 //!
 //! 1. Miners register their GitHub username with their hotkey (via OAuth)
-//! 2. Miners create issues on CortexLM/fabric
+//! 2. Miners create issues on PlatformNetwork/bounty-challenge
 //! 3. Project maintainers review and close issues with "valid" label
 //! 4. Miners claim bounties by submitting issue numbers
 //! 5. Challenge verifies via GitHub API and assigns weights
@@ -32,8 +32,10 @@ pub mod server;
 
 pub use auth::{is_valid_ss58_hotkey, verify_signature};
 pub use challenge::BountyChallenge;
-pub use gh_cli::{GhCli, GhIssue, sync_repo_with_gh, SyncResult as GhSyncResult};
+pub use gh_cli::{sync_repo_with_gh, GhCli, GhIssue, SyncResult as GhSyncResult};
 pub use github::{GitHubClient, RateLimitInfo};
 pub use github_oauth::GitHubDeviceAuth;
 pub use metagraph::MetagraphCache;
-pub use pg_storage::{calculate_weight_from_points, PgStorage, WEIGHT_PER_POINT, MAX_POINTS_FOR_FULL_WEIGHT};
+pub use pg_storage::{
+    calculate_weight_from_points, PgStorage, MAX_POINTS_FOR_FULL_WEIGHT, WEIGHT_PER_POINT,
+};

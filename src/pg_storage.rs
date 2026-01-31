@@ -314,7 +314,11 @@ impl PgStorage {
             )
             .await?;
 
-        info!("Registered {} with hotkey {}", github_username, &hotkey[..16.min(hotkey.len())]);
+        info!(
+            "Registered {} with hotkey {}",
+            github_username,
+            &hotkey[..16.min(hotkey.len())]
+        );
         Ok(())
     }
 
@@ -429,8 +433,9 @@ impl PgStorage {
     // ========================================================================
 
     /// Record a resolved issue
-    /// 
+    ///
     /// Points: 1 point per resolved issue (flat rate)
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_resolved_issue(
         &self,
         issue_id: i64,
@@ -482,7 +487,12 @@ impl PgStorage {
     }
 
     /// Check if an issue is already recorded
-    pub async fn is_issue_recorded(&self, repo_owner: &str, repo_name: &str, issue_id: i64) -> Result<bool> {
+    pub async fn is_issue_recorded(
+        &self,
+        repo_owner: &str,
+        repo_name: &str,
+        issue_id: i64,
+    ) -> Result<bool> {
         let client = self.pool.get().await?;
 
         let row = client
@@ -557,7 +567,7 @@ impl PgStorage {
     }
 
     /// Calculate weight for a specific user based on points
-    /// 
+    ///
     /// Points system:
     /// - 1 point per resolved issue (flat rate)
     /// - 0.25 points per starred repo
@@ -588,7 +598,10 @@ impl PgStorage {
 
         // Get user's star bonus (0.25 points per starred repo)
         let github_username = self.get_github_by_hotkey(hotkey).await?.unwrap_or_default();
-        let star_count = self.get_user_star_count(&github_username).await.unwrap_or(0);
+        let star_count = self
+            .get_user_star_count(&github_username)
+            .await
+            .unwrap_or(0);
         let star_points: f64 = star_count as f64 * 0.25;
 
         // Net points = valid + stars - penalties
@@ -625,7 +638,11 @@ impl PgStorage {
     }
 
     /// Get snapshots for a hotkey
-    pub async fn get_snapshots_for_hotkey(&self, hotkey: &str, limit: i32) -> Result<Vec<RewardSnapshot>> {
+    pub async fn get_snapshots_for_hotkey(
+        &self,
+        hotkey: &str,
+        limit: i32,
+    ) -> Result<Vec<RewardSnapshot>> {
         let client = self.pool.get().await?;
 
         let rows = client
@@ -863,6 +880,7 @@ impl PgStorage {
     // ========================================================================
 
     /// Record an invalid issue (closed without 'valid' label)
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_invalid_issue(
         &self,
         issue_id: i64,
@@ -1005,7 +1023,12 @@ impl PgStorage {
     }
 
     /// Upsert a star (user starred a repo)
-    pub async fn upsert_star(&self, github_username: &str, repo_owner: &str, repo_name: &str) -> Result<bool> {
+    pub async fn upsert_star(
+        &self,
+        github_username: &str,
+        repo_owner: &str,
+        repo_name: &str,
+    ) -> Result<bool> {
         let client = self.pool.get().await?;
 
         let result = client
@@ -1089,7 +1112,11 @@ impl PgStorage {
     // ========================================================================
 
     /// Get last sync time for a repo
-    pub async fn get_last_sync(&self, repo_owner: &str, repo_name: &str) -> Result<Option<DateTime<Utc>>> {
+    pub async fn get_last_sync(
+        &self,
+        repo_owner: &str,
+        repo_name: &str,
+    ) -> Result<Option<DateTime<Utc>>> {
         let client = self.pool.get().await?;
 
         let row = client
@@ -1104,7 +1131,12 @@ impl PgStorage {
     }
 
     /// Update sync state for a repo
-    pub async fn update_sync_state(&self, repo_owner: &str, repo_name: &str, issues_synced: i32) -> Result<()> {
+    pub async fn update_sync_state(
+        &self,
+        repo_owner: &str,
+        repo_name: &str,
+        issues_synced: i32,
+    ) -> Result<()> {
         let client = self.pool.get().await?;
 
         client
@@ -1159,7 +1191,12 @@ impl PgStorage {
     }
 
     /// Restore an issue if it reappears (was marked deleted but now exists)
-    pub async fn restore_issue(&self, repo_owner: &str, repo_name: &str, issue_id: i64) -> Result<()> {
+    pub async fn restore_issue(
+        &self,
+        repo_owner: &str,
+        repo_name: &str,
+        issue_id: i64,
+    ) -> Result<()> {
         let client = self.pool.get().await?;
 
         client
@@ -1175,13 +1212,18 @@ impl PgStorage {
     }
 
     /// Upsert a GitHub issue and detect label changes
-    pub async fn upsert_issue(&self, issue: &crate::github::GitHubIssue, repo_owner: &str, repo_name: &str) -> Result<LabelChange> {
+    pub async fn upsert_issue(
+        &self,
+        issue: &crate::github::GitHubIssue,
+        repo_owner: &str,
+        repo_name: &str,
+    ) -> Result<LabelChange> {
         let client = self.pool.get().await?;
 
         let new_labels: Vec<String> = issue.label_names();
         let has_valid = new_labels.contains(&"valid".to_string());
         let has_invalid = new_labels.contains(&"invalid".to_string());
-        let is_closed = issue.state == "closed";
+        let _is_closed = issue.state == "closed";
 
         // Check previous state and labels
         let prev_row = client
@@ -1196,9 +1238,9 @@ impl PgStorage {
                 let prev_labels: Vec<String> = r.get(0);
                 let prev_state: String = r.get(1);
                 (
-                    prev_labels.contains(&"valid".to_string()), 
+                    prev_labels.contains(&"valid".to_string()),
                     prev_labels.contains(&"invalid".to_string()),
-                    prev_state == "closed"
+                    prev_state == "closed",
                 )
             }
             None => (false, false, false),
@@ -1234,7 +1276,7 @@ impl PgStorage {
                 )
                 .await?
                 .is_some();
-            
+
             if !already_credited {
                 LabelChange::BecameValid
             } else {
@@ -1249,7 +1291,7 @@ impl PgStorage {
                 )
                 .await?
                 .is_some();
-            
+
             if !already_credited {
                 LabelChange::BecameValid
             } else {
@@ -1270,8 +1312,12 @@ impl PgStorage {
         match &change {
             LabelChange::BecameInvalid => {
                 // Record invalid issue (-1 point penalty)
-                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
-                
+                let hotkey = self
+                    .get_hotkey_by_github(&issue.user.login)
+                    .await
+                    .ok()
+                    .flatten();
+
                 client
                     .execute(
                         "INSERT INTO invalid_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, reason)
@@ -1288,9 +1334,11 @@ impl PgStorage {
                         ],
                     )
                     .await?;
-                
-                warn!("Issue #{} in {}/{} marked as INVALID - recorded penalty for @{}", 
-                      issue.number, repo_owner, repo_name, issue.user.login);
+
+                warn!(
+                    "Issue #{} in {}/{} marked as INVALID - recorded penalty for @{}",
+                    issue.number, repo_owner, repo_name, issue.user.login
+                );
             }
             LabelChange::LostValid => {
                 // Remove from resolved_issues when valid label is removed
@@ -1300,19 +1348,28 @@ impl PgStorage {
                         &[&repo_owner, &repo_name, &(issue.number as i64)],
                     )
                     .await?;
-                warn!("Issue #{} in {}/{} LOST valid label - removed from resolved_issues", issue.number, repo_owner, repo_name);
+                warn!(
+                    "Issue #{} in {}/{} LOST valid label - removed from resolved_issues",
+                    issue.number, repo_owner, repo_name
+                );
             }
             LabelChange::BecameValid => {
                 // All issues are worth 1 point (flat rate)
                 let multiplier = 1.0_f32;
-                
-                info!("Issue #{} in {}/{} marked as VALID - auto-crediting 1 point to user @{}", 
-                      issue.number, repo_owner, repo_name, issue.user.login);
-                
+
+                info!(
+                    "Issue #{} in {}/{} marked as VALID - auto-crediting 1 point to user @{}",
+                    issue.number, repo_owner, repo_name, issue.user.login
+                );
+
                 // Auto-credit: add to resolved_issues with 1 point
-                let hotkey = self.get_hotkey_by_github(&issue.user.login).await.ok().flatten();
+                let hotkey = self
+                    .get_hotkey_by_github(&issue.user.login)
+                    .await
+                    .ok()
+                    .flatten();
                 let resolved_at = issue.closed_at.unwrap_or(issue.updated_at);
-                
+
                 client
                     .execute(
                         "INSERT INTO resolved_issues (issue_id, repo_owner, repo_name, github_username, hotkey, issue_url, issue_title, resolved_at, weight_attributed, multiplier)
@@ -1431,19 +1488,22 @@ impl PgStorage {
             }
         };
 
-        Ok(query.iter().map(|r| CachedIssue {
-            issue_id: r.get(0),
-            repo_owner: r.get(1),
-            repo_name: r.get(2),
-            github_username: r.get(3),
-            title: r.get(4),
-            state: r.get(5),
-            labels: r.get(6),
-            created_at: r.get(7),
-            updated_at: r.get(8),
-            closed_at: r.get(9),
-            issue_url: r.get(10),
-        }).collect())
+        Ok(query
+            .iter()
+            .map(|r| CachedIssue {
+                issue_id: r.get(0),
+                repo_owner: r.get(1),
+                repo_name: r.get(2),
+                github_username: r.get(3),
+                title: r.get(4),
+                state: r.get(5),
+                labels: r.get(6),
+                created_at: r.get(7),
+                updated_at: r.get(8),
+                closed_at: r.get(9),
+                issue_url: r.get(10),
+            })
+            .collect())
     }
 
     /// Get pending issues (closed but no valid/invalid label)
@@ -1464,19 +1524,22 @@ impl PgStorage {
             )
             .await?;
 
-        Ok(rows.iter().map(|r| CachedIssue {
-            issue_id: r.get(0),
-            repo_owner: r.get(1),
-            repo_name: r.get(2),
-            github_username: r.get(3),
-            title: r.get(4),
-            state: r.get(5),
-            labels: r.get(6),
-            created_at: r.get(7),
-            updated_at: r.get(8),
-            closed_at: r.get(9),
-            issue_url: r.get(10),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| CachedIssue {
+                issue_id: r.get(0),
+                repo_owner: r.get(1),
+                repo_name: r.get(2),
+                github_username: r.get(3),
+                title: r.get(4),
+                state: r.get(5),
+                labels: r.get(6),
+                created_at: r.get(7),
+                updated_at: r.get(8),
+                closed_at: r.get(9),
+                issue_url: r.get(10),
+            })
+            .collect())
     }
 
     /// Get issues count by status (excludes deleted issues)
@@ -1550,15 +1613,18 @@ impl PgStorage {
             )
             .await?;
 
-        let recent_issues: Vec<_> = issues.iter().map(|r| CachedIssueShort {
-            issue_id: r.get(0),
-            repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
-            title: r.get(3),
-            state: r.get(4),
-            labels: r.get(5),
-            updated_at: r.get(6),
-            issue_url: r.get(7),
-        }).collect();
+        let recent_issues: Vec<_> = issues
+            .iter()
+            .map(|r| CachedIssueShort {
+                issue_id: r.get(0),
+                repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
+                title: r.get(3),
+                state: r.get(4),
+                labels: r.get(5),
+                updated_at: r.get(6),
+                issue_url: r.get(7),
+            })
+            .collect();
 
         Ok(Some(HotkeyDetails {
             hotkey: hotkey.to_string(),
@@ -1574,7 +1640,10 @@ impl PgStorage {
     }
 
     /// Get GitHub user details by username
-    pub async fn get_github_user_details(&self, username: &str) -> Result<Option<GitHubUserDetails>> {
+    pub async fn get_github_user_details(
+        &self,
+        username: &str,
+    ) -> Result<Option<GitHubUserDetails>> {
         let client = self.pool.get().await?;
 
         // Get registration info
@@ -1621,15 +1690,18 @@ impl PgStorage {
             )
             .await?;
 
-        let recent_issues: Vec<_> = issues.iter().map(|r| CachedIssueShort {
-            issue_id: r.get(0),
-            repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
-            title: r.get(3),
-            state: r.get(4),
-            labels: r.get(5),
-            updated_at: r.get(6),
-            issue_url: r.get(7),
-        }).collect();
+        let recent_issues: Vec<_> = issues
+            .iter()
+            .map(|r| CachedIssueShort {
+                issue_id: r.get(0),
+                repo: format!("{}/{}", r.get::<_, String>(1), r.get::<_, String>(2)),
+                title: r.get(3),
+                state: r.get(4),
+                labels: r.get(5),
+                updated_at: r.get(6),
+                issue_url: r.get(7),
+            })
+            .collect();
 
         Ok(Some(GitHubUserDetails {
             github_username: username.to_string(),
@@ -1656,13 +1728,16 @@ impl PgStorage {
             )
             .await?;
 
-        Ok(rows.iter().map(|r| SyncStatus {
-            repo_owner: r.get(0),
-            repo_name: r.get(1),
-            last_sync_at: r.get(2),
-            last_issue_updated_at: r.get(3),
-            issues_synced: r.get(4),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| SyncStatus {
+                repo_owner: r.get(0),
+                repo_name: r.get(1),
+                last_sync_at: r.get(2),
+                last_issue_updated_at: r.get(3),
+                issues_synced: r.get(4),
+            })
+            .collect())
     }
 
     // ========================================================================
@@ -1681,15 +1756,17 @@ impl PgStorage {
         let client = self.pool.get().await?;
         let hours = duration_hours.unwrap_or(24);
         let interval_str = format!("{} hours", hours);
-        
-        let row = client.query_one(
-            "INSERT INTO admin_bonuses (hotkey, bonus_weight, reason, granted_by, expires_at)
+
+        let row = client
+            .query_one(
+                "INSERT INTO admin_bonuses (hotkey, bonus_weight, reason, granted_by, expires_at)
              VALUES ($1, $2, $3, $4, NOW() + $5::interval)
              RETURNING id, hotkey, github_username, bonus_weight, reason, granted_by, 
                        granted_at, expires_at, active,
                        EXTRACT(EPOCH FROM (expires_at - NOW())) / 3600 as hours_remaining",
-            &[&hotkey, &bonus_weight, &reason, &granted_by, &interval_str],
-        ).await?;
+                &[&hotkey, &bonus_weight, &reason, &granted_by, &interval_str],
+            )
+            .await?;
 
         Ok(AdminBonus {
             id: row.get(0),
@@ -1708,37 +1785,44 @@ impl PgStorage {
     /// List all active (non-expired) admin bonuses
     pub async fn list_active_bonuses(&self) -> Result<Vec<AdminBonus>> {
         let client = self.pool.get().await?;
-        let rows = client.query(
-            "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
+        let rows = client
+            .query(
+                "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
                     granted_at, expires_at, hours_remaining
              FROM active_admin_bonuses
              ORDER BY expires_at ASC",
-            &[],
-        ).await?;
+                &[],
+            )
+            .await?;
 
-        Ok(rows.iter().map(|r| AdminBonus {
-            id: r.get(0),
-            hotkey: r.get(1),
-            github_username: r.get(2),
-            bonus_weight: r.get(3),
-            reason: r.get(4),
-            granted_by: r.get(5),
-            granted_at: r.get(6),
-            expires_at: r.get(7),
-            active: true,
-            hours_remaining: r.get(8),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| AdminBonus {
+                id: r.get(0),
+                hotkey: r.get(1),
+                github_username: r.get(2),
+                bonus_weight: r.get(3),
+                reason: r.get(4),
+                granted_by: r.get(5),
+                granted_at: r.get(6),
+                expires_at: r.get(7),
+                active: true,
+                hours_remaining: r.get(8),
+            })
+            .collect())
     }
 
     /// Revoke an admin bonus by ID
     pub async fn revoke_bonus(&self, bonus_id: i32, revoked_by: &str) -> Result<bool> {
         let client = self.pool.get().await?;
-        let result = client.execute(
-            "UPDATE admin_bonuses 
+        let result = client
+            .execute(
+                "UPDATE admin_bonuses 
              SET active = false, reason = COALESCE(reason, '') || ' [Revoked by ' || $2 || ']'
              WHERE id = $1 AND active = true",
-            &[&bonus_id, &revoked_by],
-        ).await?;
+                &[&bonus_id, &revoked_by],
+            )
+            .await?;
 
         Ok(result > 0)
     }
@@ -1746,14 +1830,16 @@ impl PgStorage {
     /// Get admin bonus statistics
     pub async fn get_bonus_stats(&self) -> Result<AdminBonusStats> {
         let client = self.pool.get().await?;
-        let row = client.query_one(
-            "SELECT 
+        let row = client
+            .query_one(
+                "SELECT 
                 COUNT(*)::int as total_active,
                 COALESCE(SUM(bonus_weight), 0)::float8 as total_bonus_weight,
                 COUNT(DISTINCT hotkey)::int as unique_recipients
              FROM active_admin_bonuses",
-            &[],
-        ).await?;
+                &[],
+            )
+            .await?;
 
         Ok(AdminBonusStats {
             total_active: row.get(0),
@@ -1765,27 +1851,32 @@ impl PgStorage {
     /// Get bonuses for a specific hotkey
     pub async fn get_bonuses_for_hotkey(&self, hotkey: &str) -> Result<Vec<AdminBonus>> {
         let client = self.pool.get().await?;
-        let rows = client.query(
-            "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
+        let rows = client
+            .query(
+                "SELECT id, hotkey, github_username, bonus_weight, reason, granted_by,
                     granted_at, expires_at, hours_remaining
              FROM active_admin_bonuses
              WHERE hotkey = $1
              ORDER BY expires_at ASC",
-            &[&hotkey],
-        ).await?;
+                &[&hotkey],
+            )
+            .await?;
 
-        Ok(rows.iter().map(|r| AdminBonus {
-            id: r.get(0),
-            hotkey: r.get(1),
-            github_username: r.get(2),
-            bonus_weight: r.get(3),
-            reason: r.get(4),
-            granted_by: r.get(5),
-            granted_at: r.get(6),
-            expires_at: r.get(7),
-            active: true,
-            hours_remaining: r.get(8),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| AdminBonus {
+                id: r.get(0),
+                hotkey: r.get(1),
+                github_username: r.get(2),
+                bonus_weight: r.get(3),
+                reason: r.get(4),
+                granted_by: r.get(5),
+                granted_at: r.get(6),
+                expires_at: r.get(7),
+                active: true,
+                hours_remaining: r.get(8),
+            })
+            .collect())
     }
 }
 
@@ -1891,12 +1982,12 @@ pub struct StarStats {
 }
 
 /// Calculate weight based on points
-/// 
+///
 /// Points system:
 /// - 1 point per resolved issue (flat rate)
 /// - 0.25 points per starred repo
 /// - 100 points = 100% weight (capped)
-/// 
+///
 /// Formula: weight = min(points * 0.02, 1.0)
 pub fn calculate_weight_from_points(points: f64) -> f64 {
     (points * WEIGHT_PER_POINT).min(1.0)
@@ -1935,10 +2026,10 @@ mod tests {
     fn test_weight_from_points_basic() {
         // 1 point = 2% (50 points = 100%)
         assert!((calculate_weight_from_points(1.0) - 0.02).abs() < 0.0001);
-        
+
         // 10 points = 20%
         assert!((calculate_weight_from_points(10.0) - 0.20).abs() < 0.0001);
-        
+
         // 25 points = 50%
         assert!((calculate_weight_from_points(25.0) - 0.50).abs() < 0.0001);
     }
@@ -1948,7 +2039,7 @@ mod tests {
         // 7 issues = 7 points = 14%
         let issue_points = 7.0;
         assert!((calculate_weight_from_points(issue_points) - 0.14).abs() < 0.0001);
-        
+
         // 50 issues = 50 points = 100% (capped)
         let issue_points = 50.0;
         assert!((calculate_weight_from_points(issue_points) - 1.0).abs() < 0.0001);
@@ -1959,7 +2050,7 @@ mod tests {
         // 10 issues (10 pts) + 4 stars (1 pt) = 11 points = 22%
         let total_points = 10.0 + (4.0 * 0.25);
         assert!((calculate_weight_from_points(total_points) - 0.22).abs() < 0.0001);
-        
+
         // 48 issues + 8 stars = 48 + 2 = 50 points = 100%
         let total_points = 48.0 + (8.0 * 0.25);
         assert!((calculate_weight_from_points(total_points) - 1.0).abs() < 0.0001);

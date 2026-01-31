@@ -1,60 +1,40 @@
 //! Config command - show challenge configuration
 
 use crate::style::*;
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 pub async fn run(rpc: &str) -> Result<()> {
     print_header("Challenge Configuration");
 
-    let client = reqwest::Client::new();
+    // Use BountyClient for API consistency
+    let client = crate::client::BountyClient::new(rpc);
 
-    let response = client
-        .get(format!("{}/config", rpc))
-        .send()
-        .await
-        .context("Failed to connect to server")?;
-
-    let config: serde_json::Value = response.json().await?;
-
-    println!();
-    println!(
-        "Challenge ID:     {}",
-        style_cyan(config["challenge_id"].as_str().unwrap_or("?"))
-    );
-    println!(
-        "Name:             {}",
-        config["name"].as_str().unwrap_or("?")
-    );
-    println!(
-        "Version:          {}",
-        config["version"].as_str().unwrap_or("?")
-    );
-
-    if let Some(features) = config["features"].as_array() {
-        println!(
-            "Features:         {}",
-            features
-                .iter()
-                .filter_map(|f| f.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-
-    if let Some(limits) = config.get("limits") {
-        println!();
-        println!("{}", style_bold("Limits:"));
-        if let Some(size) = limits["max_submission_size"].as_u64() {
-            println!("  Max submission:   {} bytes", size);
+    match client.get_stats().await {
+        Ok(stats) => {
+            println!();
+            println!(
+                "Challenge ID:     {}",
+                style_cyan(stats["challenge_id"].as_str().unwrap_or("?"))
+            );
+            println!(
+                "Version:          {}",
+                stats["version"].as_str().unwrap_or("?")
+            );
+            if let Some(total) = stats["total_bounties"].as_u64() {
+                println!("Total Bounties:   {}", total);
+            }
+            if let Some(miners) = stats["total_miners"].as_u64() {
+                println!("Active Miners:    {}", miners);
+            }
         }
-        if let Some(time) = limits["max_evaluation_time"].as_u64() {
-            println!("  Max eval time:    {}s", time);
+        Err(e) => {
+            print_error(&format!("Failed to fetch config: {}", e));
         }
     }
 
     println!();
     println!("{}", style_bold("Target Repository:"));
-    println!("  https://github.com/CortexLM/fabric");
+    println!("  https://github.com/PlatformNetwork/bounty-challenge");
     println!();
     println!("{}", style_bold("Valid Issue Criteria:"));
     println!("  - Issue must be closed");

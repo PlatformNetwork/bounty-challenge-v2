@@ -7,7 +7,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
@@ -75,7 +75,9 @@ impl GitHubIssue {
     }
 
     pub fn has_invalid_label(&self) -> bool {
-        self.labels.iter().any(|l| l.name.to_lowercase() == "invalid")
+        self.labels
+            .iter()
+            .any(|l| l.name.to_lowercase() == "invalid")
     }
 
     pub fn is_closed(&self) -> bool {
@@ -104,7 +106,9 @@ impl GitHubClient {
         if token.is_some() {
             info!("GitHub client initialized with authentication token");
         } else {
-            warn!("GitHub client initialized WITHOUT token - rate limits will be very low (60/hour)");
+            warn!(
+                "GitHub client initialized WITHOUT token - rate limits will be very low (60/hour)"
+            );
         }
         Self {
             client: reqwest::Client::new(),
@@ -169,7 +173,8 @@ impl GitHubClient {
         })
     }
 
-    /// Parse rate limit headers from response
+    /// Parse rate limit headers from response (used for monitoring)
+    #[allow(dead_code)]
     fn parse_rate_limit_headers(response: &reqwest::Response) -> Option<RateLimitInfo> {
         let limit = response
             .headers()
@@ -201,7 +206,8 @@ impl GitHubClient {
         })
     }
 
-    /// Wait if rate limit is low
+    /// Wait if rate limit is low (used for throttling)
+    #[allow(dead_code)]
     async fn handle_rate_limit(&self, rate_info: &RateLimitInfo) {
         if rate_info.is_low() {
             let wait_secs = rate_info.seconds_until_reset().min(300) as u64; // Max 5 min wait
@@ -229,7 +235,10 @@ impl GitHubClient {
 
             if let Some(since_date) = since {
                 // Use Z format instead of +00:00 (GitHub API doesn't handle unescaped +)
-                url.push_str(&format!("&since={}", since_date.format("%Y-%m-%dT%H:%M:%SZ")));
+                url.push_str(&format!(
+                    "&since={}",
+                    since_date.format("%Y-%m-%dT%H:%M:%SZ")
+                ));
             }
 
             debug!("Fetching issues page {}: {}", page, url);
@@ -367,7 +376,7 @@ pub struct BountyVerification {
 pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
     let client = reqwest::Client::new();
     let token = get_github_token();
-    
+
     let mut all_stargazers = Vec::new();
     let mut page = 1;
     let per_page = 100;
@@ -394,12 +403,17 @@ pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
                 debug!("Repo {}/{} not found or no access", owner, repo);
                 return Ok(vec![]);
             }
-            warn!("Failed to fetch stargazers for {}/{}: {}", owner, repo, response.status());
+            warn!(
+                "Failed to fetch stargazers for {}/{}: {}",
+                owner,
+                repo,
+                response.status()
+            );
             break;
         }
 
         let stargazers: Vec<GitHubUser> = response.json().await?;
-        
+
         if stargazers.is_empty() {
             break;
         }
@@ -414,7 +428,7 @@ pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
         }
 
         page += 1;
-        
+
         // Rate limit protection
         if page > 10 {
             info!("Stopping at page 10 for {}/{} stargazers", owner, repo);
@@ -422,6 +436,11 @@ pub async fn get_stargazers(owner: &str, repo: &str) -> Result<Vec<String>> {
         }
     }
 
-    debug!("Found {} stargazers for {}/{}", all_stargazers.len(), owner, repo);
+    debug!(
+        "Found {} stargazers for {}/{}",
+        all_stargazers.len(),
+        owner,
+        repo
+    );
     Ok(all_stargazers)
 }

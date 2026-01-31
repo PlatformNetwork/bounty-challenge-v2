@@ -1,4 +1,4 @@
--- Migration 010: Fix negative weight calculation
+-- Migration 011: Fix negative weight calculation
 -- Users with negative points should have 0 weight
 -- All issues worth 1 point (no multipliers)
 -- Stars worth 0.25 points each
@@ -76,5 +76,5 @@ ORDER BY weight DESC;
 -- ============================================================================
 -- SCHEMA MIGRATION RECORD
 -- ============================================================================
-INSERT INTO schema_migrations (version, name) VALUES (10, 'fix_negative_weight')
+INSERT INTO schema_migrations (version, name) VALUES (11, 'fix_negative_weight')
 ON CONFLICT DO NOTHING;

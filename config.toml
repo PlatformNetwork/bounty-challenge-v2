@@ -15,10 +15,9 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
-# SQLite for local CLI cache
-sqlite_path = "bounty.db"
-# PostgreSQL URL from platform-challenge (env: DATABASE_URL)
-# postgres_url = "postgres://user:pass@host:5432/dbname"
+# PostgreSQL connection string (use DATABASE_URL environment variable)
+# Format: postgres://user:password@host:port/database
+# The server reads DATABASE_URL from environment for PostgreSQL connections
 
 [rewards]
 # Maximum issues per day for full emission (weight = 1.0)

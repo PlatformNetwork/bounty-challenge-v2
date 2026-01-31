@@ -184,7 +184,12 @@ impl BountyChallenge {
             .await
             .unwrap_or(0.0);
 
-        let user_balance = self.storage.get_user_balance(participant_id).await.ok().flatten();
+        let user_balance = self
+            .storage
+            .get_user_balance(participant_id)
+            .await
+            .ok()
+            .flatten();
         let total_valid = user_balance.map(|b| b.valid_count as u32).unwrap_or(0);
 
         let result = ClaimResult {
@@ -197,10 +202,12 @@ impl BountyChallenge {
         Ok(EvaluationResponse::success(
             request_id,
             weight,
-            serde_json::to_value(&result).unwrap(),
+            serde_json::to_value(&result).expect("failed to serialize weight result"),
         ))
     }
 
+    // Note: Legacy scoring method - weights are now calculated in PgStorage
+    #[allow(dead_code)]
     fn calculate_score(&self, valid_issues: u32) -> f64 {
         // Logarithmic scoring to prevent gaming
         // score = log2(1 + valid_issues) / 10
@@ -220,7 +227,7 @@ impl BountyChallenge {
             .into_iter()
             .map(|e| {
                 json!({
-                    "miner_hotkey": e.hotkey,
+                    "hotkey": e.hotkey,
                     "github_username": e.github_username,
                     "score": e.score,
                     "valid_issues": e.valid_issues,

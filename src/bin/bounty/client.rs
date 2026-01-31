@@ -24,6 +24,7 @@ pub struct RegisterRequest {
 #[derive(Debug, Deserialize)]
 pub struct RegisterResponse {
     pub success: bool,
+    #[allow(dead_code)]
     pub message: Option<String>,
     pub error: Option<String>,
 }
@@ -42,17 +43,13 @@ pub struct LeaderboardEntry {
 pub struct StatusResponse {
     pub registered: bool,
     pub github_username: Option<String>,
-    pub issues_resolved_24h: Option<i32>,
+    pub valid_issues_count: Option<u64>,
+    #[allow(dead_code)]
+    pub invalid_issues_count: Option<u64>,
+    #[allow(dead_code)]
+    pub balance: Option<i64>,
+    pub is_penalized: bool,
     pub weight: Option<f64>,
-    pub recent_issues: Option<Vec<RecentIssue>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RecentIssue {
-    pub issue_id: i64,
-    pub repo: String,
-    pub title: Option<String>,
-    pub resolved_at: String,
 }
 
 /// Bounty Challenge Bridge API client
@@ -74,6 +71,7 @@ impl BountyClient {
     }
 
     /// Create client with custom timeout
+    #[allow(dead_code)]
     pub fn with_timeout(platform_url: &str, timeout: Duration) -> Self {
         Self {
             client: Client::builder()
@@ -123,7 +121,11 @@ impl BountyClient {
             }
         } else {
             let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
-            Err(anyhow!("Failed to fetch leaderboard ({}): {}", status, error_text))
+            Err(anyhow!(
+                "Failed to fetch leaderboard ({}): {}",
+                status,
+                error_text
+            ))
         }
     }
 
@@ -137,11 +139,16 @@ impl BountyClient {
             Ok(resp.json().await?)
         } else {
             let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
-            Err(anyhow!("Failed to fetch status ({}): {}", status, error_text))
+            Err(anyhow!(
+                "Failed to fetch status ({}): {}",
+                status,
+                error_text
+            ))
         }
     }
 
     /// Get challenge stats
+    #[allow(dead_code)]
     pub async fn get_stats(&self) -> Result<serde_json::Value> {
         let url = self.bridge_url("stats");
         let resp = self.client.get(&url).send().await?;
@@ -151,7 +158,11 @@ impl BountyClient {
             Ok(resp.json().await?)
         } else {
             let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
-            Err(anyhow!("Failed to fetch stats ({}): {}", status, error_text))
+            Err(anyhow!(
+                "Failed to fetch stats ({}): {}",
+                status,
+                error_text
+            ))
         }
     }
 }
@@ -176,7 +187,10 @@ mod tests {
     fn test_bridge_url() {
         let client = BountyClient::new("https://api.example.com");
         let url = client.bridge_url("register");
-        assert_eq!(url, "https://api.example.com/api/v1/bridge/bounty-challenge/register");
+        assert_eq!(
+            url,
+            "https://api.example.com/api/v1/bridge/bounty-challenge/register"
+        );
     }
 
     #[test]
