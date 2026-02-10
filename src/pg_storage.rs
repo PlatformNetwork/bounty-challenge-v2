@@ -672,7 +672,8 @@ impl PgStorage {
     /// Points system:
     /// - 1 point per resolved issue (flat rate)
     /// - 0.25 points per starred repo
-    /// - Raw weight = points * 0.02 (normalized at API level)
+    /// - Unified penalty: max(0, (invalid + duplicate) - valid)
+    /// - Raw weight = net_points * 0.02 (normalized at API level)
     /// - Negative net points = 0% weight
     pub async fn calculate_user_weight(&self, hotkey: &str) -> Result<f64> {
         let client = self.pool.get().await?;
@@ -685,9 +686,9 @@ impl PgStorage {
                 &[&hotkey],
             )
             .await?;
-        let valid_points: f64 = valid_row.get::<_, f64>(0);
+        let valid_count: f64 = valid_row.get::<_, f64>(0);
 
-        // Get user's invalid count in last 24h (dynamic penalty)
+        // Get user's invalid count in last 24h
         let invalid_row = client
             .query_one(
                 "SELECT COUNT(*)::FLOAT8 FROM invalid_issues 
@@ -697,24 +698,24 @@ impl PgStorage {
             .await?;
         let invalid_count: f64 = invalid_row.get::<_, f64>(0);
 
-        // Dynamic penalty: only penalize excess invalid issues beyond valid count
-        // No penalty if invalid_count <= valid_count
-        // Penalty = (invalid_count - valid_count) when invalid_count > valid_count
-        let invalid_penalty: f64 = if invalid_count > valid_points {
-            invalid_count - valid_points
-        } else {
-            0.0
-        };
-
-        // Get user's duplicate penalty (0.5 penalty per duplicate issue) in last 24h
+        // Get user's duplicate count in last 24h
         let duplicate_row = client
             .query_one(
-                "SELECT COUNT(*)::FLOAT8 * 0.5 FROM duplicate_issues 
+                "SELECT COUNT(*)::FLOAT8 FROM duplicate_issues 
                  WHERE hotkey = $1 AND recorded_at >= NOW() - INTERVAL '24 hours'",
                 &[&hotkey],
             )
             .await?;
-        let duplicate_penalty: f64 = duplicate_row.get::<_, f64>(0);
+        let duplicate_count: f64 = duplicate_row.get::<_, f64>(0);
+
+        // Unified penalty: max(0, (invalid + duplicate) - valid)
+        // Only penalize when total bad issues exceed valid issues
+        let total_bad = invalid_count + duplicate_count;
+        let penalty: f64 = if total_bad > valid_count {
+            total_bad - valid_count
+        } else {
+            0.0
+        };
 
         // Get user's star bonus (0.25 points per starred repo)
         let github_username = self.get_github_by_hotkey(hotkey).await?.unwrap_or_default();
@@ -724,9 +725,9 @@ impl PgStorage {
             .unwrap_or(0);
         let star_points: f64 = star_count as f64 * 0.25;
 
-        // Net points = valid + stars - penalties (invalid + duplicate)
-        // If negative, weight is 0
-        let net_points = valid_points + star_points - invalid_penalty - duplicate_penalty;
+        // Net points = valid + stars - penalty
+        // If negative or zero, weight is 0
+        let net_points = valid_count + star_points - penalty;
         if net_points <= 0.0 {
             return Ok(0.0);
         }
@@ -921,8 +922,7 @@ impl PgStorage {
                 user_duplicate_24h AS (
                     SELECT 
                         r.hotkey,
-                        COUNT(*) as duplicate_count,
-                        (COUNT(*)::FLOAT * 0.5)::INTEGER as duplicate_penalty_points  -- 0.5 penalty per duplicate issue
+                        COUNT(*) as duplicate_count
                     FROM github_registrations r
                     JOIN duplicate_issues di ON r.hotkey = di.hotkey
                     WHERE di.recorded_at >= NOW() - INTERVAL '24 hours'
@@ -960,8 +960,10 @@ impl PgStorage {
                     COALESCE(ui.invalid_count, 0)::INTEGER as invalid_issues,
                     COALESCE(ud.duplicate_count, 0)::INTEGER as duplicate_issues,
                     COALESCE(uv.total_points, 0)::INTEGER as total_points,
-                    (GREATEST(0, COALESCE(ui.invalid_count, 0) - COALESCE(uv.valid_count, 0)) + COALESCE(ud.duplicate_penalty_points, 0))::INTEGER as penalty_points,
-                    (COALESCE(uv.total_points, 0) - GREATEST(0, COALESCE(ui.invalid_count, 0) - COALESCE(uv.valid_count, 0)) - COALESCE(ud.duplicate_penalty_points, 0))::INTEGER as net_points,
+                    -- Unified penalty: max(0, (invalid + duplicate) - valid)
+                    GREATEST(0, (COALESCE(ui.invalid_count, 0) + COALESCE(ud.duplicate_count, 0)) - COALESCE(uv.valid_count, 0))::INTEGER as penalty_points,
+                    -- Net points = valid - penalty (stars added separately in weight calc)
+                    (COALESCE(uv.total_points, 0) - GREATEST(0, (COALESCE(ui.invalid_count, 0) + COALESCE(ud.duplicate_count, 0)) - COALESCE(uv.valid_count, 0)))::INTEGER as net_points,
                     COALESCE(us.star_count, 0)::INTEGER as star_count,
                     COALESCE(us.starred_repos, ARRAY[]::TEXT[]) as starred_repos,
                     CASE 
