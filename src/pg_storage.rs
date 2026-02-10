@@ -698,11 +698,14 @@ impl PgStorage {
             .await?;
         let invalid_count: f64 = invalid_row.get::<_, f64>(0);
 
-        // Get user's duplicate count in last 24h
+        // Get user's duplicate count in last 24h (based on issue created_at, not recorded_at)
         let duplicate_row = client
             .query_one(
-                "SELECT COUNT(*)::FLOAT8 FROM duplicate_issues 
-                 WHERE hotkey = $1 AND recorded_at >= NOW() - INTERVAL '24 hours'",
+                "SELECT COUNT(*)::FLOAT8 FROM duplicate_issues di
+                 JOIN github_issues gi ON di.issue_id = gi.issue_id 
+                     AND di.repo_owner = gi.repo_owner 
+                     AND di.repo_name = gi.repo_name
+                 WHERE di.hotkey = $1 AND gi.created_at >= NOW() - INTERVAL '24 hours'",
                 &[&hotkey],
             )
             .await?;
@@ -925,7 +928,10 @@ impl PgStorage {
                         COUNT(*) as duplicate_count
                     FROM github_registrations r
                     JOIN duplicate_issues di ON r.hotkey = di.hotkey
-                    WHERE di.recorded_at >= NOW() - INTERVAL '24 hours'
+                    JOIN github_issues gi ON di.issue_id = gi.issue_id 
+                        AND di.repo_owner = gi.repo_owner 
+                        AND di.repo_name = gi.repo_name
+                    WHERE gi.created_at >= NOW() - INTERVAL '24 hours'
                     GROUP BY r.hotkey
                 ),
                 user_pending_24h AS (
