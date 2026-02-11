@@ -223,6 +223,7 @@ impl BountyChallenge {
                     "score": e.score,
                     "valid_issues": e.valid_issues,
                     "invalid_issues": e.invalid_issues,
+                    "duplicate_issues": e.duplicate_issues,
                     "pending_issues": e.pending_issues,
                     "total_points": e.total_points,
                     "penalty_points": e.penalty_points,
