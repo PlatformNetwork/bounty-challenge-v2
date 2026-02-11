@@ -384,6 +384,22 @@ impl PgStorage {
             info!("Applied migration 015_fix_24h_consistency");
         }
 
+        // Migration 018: Separate penalties for invalid and duplicate issues
+        // penalty = max(0, invalid - valid) + max(0, duplicate - valid)
+        let has_separate_penalties: bool = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 18)",
+                &[],
+            )
+            .await?
+            .get(0);
+
+        if !has_separate_penalties {
+            let migration_sql = include_str!("../migrations/018_separate_penalties.sql");
+            client.batch_execute(migration_sql).await?;
+            info!("Applied migration 018_separate_penalties");
+        }
+
         Ok(())
     }
 
@@ -711,14 +727,18 @@ impl PgStorage {
             .await?;
         let duplicate_count: f64 = duplicate_row.get::<_, f64>(0);
 
-        // Unified penalty: max(0, (invalid + duplicate) - valid)
-        // Only penalize when total bad issues exceed valid issues
-        let total_bad = invalid_count + duplicate_count;
-        let penalty: f64 = if total_bad > valid_count {
-            total_bad - valid_count
+        // Separate penalties: each type only penalizes when it exceeds valid count
+        let penalty_invalid: f64 = if invalid_count > valid_count {
+            invalid_count - valid_count
         } else {
             0.0
         };
+        let penalty_duplicate: f64 = if duplicate_count > valid_count {
+            duplicate_count - valid_count
+        } else {
+            0.0
+        };
+        let penalty = penalty_invalid + penalty_duplicate;
 
         // Get user's star bonus (0.25 points per starred repo)
         let github_username = self.get_github_by_hotkey(hotkey).await?.unwrap_or_default();
@@ -966,10 +986,10 @@ impl PgStorage {
                     COALESCE(ui.invalid_count, 0)::INTEGER as invalid_issues,
                     COALESCE(ud.duplicate_count, 0)::INTEGER as duplicate_issues,
                     COALESCE(uv.total_points, 0)::INTEGER as total_points,
-                    -- Unified penalty: max(0, (invalid + duplicate) - valid)
-                    GREATEST(0, (COALESCE(ui.invalid_count, 0) + COALESCE(ud.duplicate_count, 0)) - COALESCE(uv.valid_count, 0))::INTEGER as penalty_points,
+                    -- Separate penalties: each type only penalizes when it exceeds valid count
+                    (GREATEST(0, COALESCE(ui.invalid_count, 0) - COALESCE(uv.valid_count, 0)) + GREATEST(0, COALESCE(ud.duplicate_count, 0) - COALESCE(uv.valid_count, 0)))::INTEGER as penalty_points,
                     -- Net points = valid - penalty (stars added separately in weight calc)
-                    (COALESCE(uv.total_points, 0) - GREATEST(0, (COALESCE(ui.invalid_count, 0) + COALESCE(ud.duplicate_count, 0)) - COALESCE(uv.valid_count, 0)))::INTEGER as net_points,
+                    (COALESCE(uv.total_points, 0) - (GREATEST(0, COALESCE(ui.invalid_count, 0) - COALESCE(uv.valid_count, 0)) + GREATEST(0, COALESCE(ud.duplicate_count, 0) - COALESCE(uv.valid_count, 0))))::INTEGER as net_points,
                     COALESCE(us.star_count, 0)::INTEGER as star_count,
                     COALESCE(us.starred_repos, ARRAY[]::TEXT[]) as starred_repos,
                     CASE 
