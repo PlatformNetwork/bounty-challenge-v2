@@ -77,46 +77,52 @@ Each valid issue earns you 1 point:
 
 ### Weight Calculation
 
-Your weight is calculated from your total points:
+Your weight is calculated from your net points (within a **24-hour rolling window**):
 
-$$W_{user} = \min(points \times 0.02, 1.0)$$
+$$W_{user} = net\_points \times 0.02$$
 
 Where:
-- **50 points = 100% weight** (maximum)
+- `net_points = valid_count + star_bonus - penalty`
 - Each point = 2% weight
+- Weight is **not capped** at calculation level (normalization happens at API level)
 
 **Examples:**
 
-| Miner | Valid Issues | Stars | Total Points | Weight |
-|-------|-------------|-------|--------------|--------|
+| Miner | Valid Issues | Stars | Net Points | Weight |
+|-------|-------------|-------|------------|--------|
 | A | 10 | 0 | 10 | 20% |
 | B | 25 | 4 | 26 | 52% |
-| C | 50 | 5 | 51.25 | 100% (capped) |
+| C | 50 | 5 | 51.25 | 102.5% (raw, normalized at API level) |
 
 See [Scoring Documentation](docs/reference/scoring.md) for complete specifications.
 
 ### Penalty System
 
-> **WARNING**: Issues marked with `invalid` label count against you!
+> **WARNING**: Issues marked with `invalid` or `duplicate` labels count against you!
+
+Penalties are applied **separately** for invalid and duplicate issues. Each type only triggers a penalty when its count exceeds your valid issue count.
 
 | Rule | Description |
 |------|-------------|
-| **Penalty** | -2 points per invalid issue |
-| **Zero Weight** | If net points < 0, weight = 0 |
+| **Invalid Penalty** | max(0, invalid_count - valid_count) |
+| **Duplicate Penalty** | max(0, duplicate_count - valid_count) |
+| **Zero Weight** | If net points <= 0, weight = 0 |
 | **Recovery** | Submit valid issues to restore positive balance |
 
 **Formula:**
 ```
-net_points = valid_issues - (invalid_issues × 2)
+penalty = max(0, invalid - valid) + max(0, duplicate - valid)
+net_points = valid + star_bonus - penalty
 weight = net_points > 0 ? (net_points × 0.02) : 0
 ```
 
 **Examples:**
 
-| Miner | Valid | Invalid | Net Points | Weight |
-|-------|-------|---------|------------|--------|
-| A | 10 | 2 | 6 | 12% |
-| B | 3 | 8 | -13 | 0% (penalized) |
+| Miner | Valid | Invalid | Duplicate | Penalty | Net Points | Weight |
+|-------|-------|---------|-----------|---------|------------|--------|
+| A | 10 | 2 | 1 | 0 | 10 | 20% |
+| B | 3 | 8 | 0 | 5 | -2 | 0% (penalized) |
+| C | 5 | 7 | 8 | 5 | 0 | 0% (penalized) |
 
 ### Star Bonus
 
@@ -150,7 +156,7 @@ Submit issues about bugs, security problems, or improvements you find:
 |------------|-----------------|-----------------|-----|
 | **PlatformNetwork/bounty-challenge** | **1 point** | 50 issues | https://github.com/PlatformNetwork/bounty-challenge |
 
-> **Note:** 50 points = 100% weight. Star 5 repos for an additional 1.25 points bonus!
+> **Note:** 50 net points = 100% raw weight. Star 5 repos for an additional 1.25 points bonus!
 
 > **Important:** All issues must be submitted to **this repository** ([PlatformNetwork/bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge/issues)) to receive rewards.
 
@@ -348,7 +354,7 @@ bounty-challenge/
 ├── migrations/              # PostgreSQL migrations
 │   ├── 001_schema.sql
 │   ├── ...
-│   └── 011_fix_negative_weight.sql
+│   └── 018_separate_penalties.sql
 ├── docs/
 │   ├── anti-abuse.md        # Anti-abuse documentation
 │   ├── miner/               # Miner guides

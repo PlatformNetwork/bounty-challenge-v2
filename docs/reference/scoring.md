@@ -19,8 +19,10 @@ Complete specification of the reward system for Bounty Challenge.
 Bounty Challenge uses a **points-based reward system** designed to:
 1. **Incentivize quality** - Valid issues earn points
 2. **Reward engagement** - Starring repos adds bonus points
-3. **Prevent abuse** - Invalid issues deduct points
+3. **Prevent abuse** - Invalid and duplicate issues incur penalties
 4. **Ensure fairness** - Simple, transparent scoring
+
+> **Important:** All calculations are based on a **24-hour rolling window**. Only issues resolved/recorded within the last 24 hours are counted.
 
 ### Key Principles
 
@@ -28,8 +30,9 @@ Bounty Challenge uses a **points-based reward system** designed to:
 |-----------|---------------|
 | **Point-Based** | 1 point per valid issue |
 | **Star Bonus** | 0.25 points per starred repo |
-| **Penalty System** | Invalid issues reduce balance |
+| **Penalty System** | Invalid and duplicate issues reduce balance |
 | **Quality Gate** | Only `valid` labeled issues count |
+| **24h Window** | All calculations use a rolling 24-hour window |
 
 ---
 
@@ -39,21 +42,17 @@ Bounty Challenge uses a **points-based reward system** designed to:
 
 | Source | Points | Description |
 |--------|--------|-------------|
-| **Valid Issue** | 1 point | Issue closed with `valid` label |
+| **Valid Issue** | 1 point | Issue closed with `valid` label (within 24h) |
 | **Starred Repo** | 0.25 points | Each starred target repository |
-
-### Point Requirements
-
-| Points | Weight | Description |
-|--------|--------|-------------|
-| 0 | 0% | No valid contributions |
-| 25 | 50% | 25 valid issues |
-| 50 | 100% | Maximum weight reached |
-| 50+ | 100% | Capped at 100% |
 
 ### Points Formula
 
-$$points = issues_{valid} + (stars \times 0.25)$$
+$$net\_points = valid\_count + star\_bonus - penalty$$
+
+Where:
+- `valid_count` = number of valid issues in the last 24 hours
+- `star_bonus` = starred repos count × 0.25 (requires ≥ 2 valid issues)
+- `penalty` = see [Penalty System](#penalty-system)
 
 ---
 
@@ -61,36 +60,37 @@ $$points = issues_{valid} + (stars \times 0.25)$$
 
 ### Formula
 
-Your weight is calculated directly from your total points:
+Your raw weight is calculated directly from your net points:
 
-$$W_{user} = \min(points \times 0.02, 1.0)$$
+$$W_{user} = net\_points \times 0.02$$
 
 Where:
-- $W_{user}$ = Your total weight (0.0 to 1.0)
-- $points$ = Total points (valid issues + star bonus)
+- $W_{user}$ = Your raw weight (no cap applied at calculation level)
+- $net\_points$ = Valid issues + star bonus - penalty
 - 0.02 = Weight per point (2% per point)
-- 1.0 = Maximum weight cap (100%)
+
+> **Note:** Weight is computed as a raw value (`points * 0.02`) and is **not capped** at the calculation level. Normalization is handled at the API level when weights are submitted.
+
+If `net_points <= 0`, your weight is **0** (penalized).
 
 ### Constants
 
 ```rust
-// Maximum points for full weight (100%)
-MAX_POINTS_FOR_FULL_WEIGHT = 50.0
-
 // Weight earned per point (2% = 0.02)
 WEIGHT_PER_POINT = 0.02
 ```
 
 ### Weight Table
 
-| Points | Weight | Calculation |
-|--------|--------|-------------|
+| Net Points | Weight | Calculation |
+|------------|--------|-------------|
+| 0 or less | 0% | Penalized |
 | 1 | 2% | 1 × 0.02 = 0.02 |
 | 5 | 10% | 5 × 0.02 = 0.10 |
 | 10 | 20% | 10 × 0.02 = 0.20 |
 | 25 | 50% | 25 × 0.02 = 0.50 |
 | 50 | 100% | 50 × 0.02 = 1.00 |
-| 100 | 100% | Capped at 1.0 |
+| 100 | 200% | 100 × 0.02 = 2.00 (no cap) |
 
 ---
 
@@ -116,56 +116,74 @@ Earn 0.25 points by starring each of these repositories:
 
 ### Examples
 
-| Miner | Valid Issues | Stars | Issue Points | Star Points | Total | Weight |
-|-------|-------------|-------|--------------|-------------|-------|--------|
+| Miner | Valid Issues | Stars | Issue Points | Star Points | Net Points | Weight |
+|-------|-------------|-------|--------------|-------------|------------|--------|
 | A | 10 | 0 | 10 | 0 | 10 | 20% |
 | B | 10 | 4 | 10 | 1.0 | 11 | 22% |
 | C | 45 | 5 | 45 | 1.25 | 46.25 | 92.5% |
-| D | 50 | 5 | 50 | 1.25 | 51.25 | 100% (capped) |
+| D | 50 | 5 | 50 | 1.25 | 51.25 | 102.5% (raw, normalized at API level) |
 
 ---
 
 ## Penalty System
 
+### Overview
+
+Penalties are applied separately for **invalid** and **duplicate** issues. Each penalty type is calculated independently against the valid issue count.
+
 ### Invalid Issues
 
-Issues marked with the `invalid` label incur dynamic penalties based on the ratio of invalid to valid issues:
+Issues marked with the `invalid` label incur dynamic penalties:
 
 | Condition | Penalty |
 |-----------|---------|
 | `invalid_count <= valid_count` | 0 points (no penalty) |
 | `invalid_count > valid_count` | `invalid_count - valid_count` points |
 
-### Balance Calculation
+### Duplicate Issues
 
-$$penalty = \max(0, invalid_{count} - valid_{count})$$
-$$balance = valid_{issues} - penalty$$
+Issues marked with the `duplicate` label also incur separate dynamic penalties:
 
-If `balance < 0`, your weight becomes **0** (penalized).
+| Condition | Penalty |
+|-----------|---------|
+| `duplicate_count <= valid_count` | 0 points (no penalty) |
+| `duplicate_count > valid_count` | `duplicate_count - valid_count` points |
+
+### Unified Penalty Formula
+
+$$penalty = \max(0, invalid\_count - valid\_count) + \max(0, duplicate\_count - valid\_count)$$
+
+$$net\_points = valid\_count + star\_bonus - penalty$$
+
+If `net_points <= 0`, weight becomes **0** (penalized).
+
+> **Note:** Invalid and duplicate penalties are computed separately. Each type only triggers a penalty when its count exceeds the valid issue count.
 
 ### Dynamic Penalty Examples
 
-| Valid | Invalid | Penalty | Balance | Explanation |
-|-------|---------|---------|---------|-------------|
-| 5 | 3 | 0 | 5 | 3 <= 5, no penalty |
-| 5 | 5 | 0 | 5 | 5 <= 5, no penalty |
-| 5 | 7 | 2 | 3 | 7 - 5 = 2 penalty |
-| 2 | 6 | 4 | -2 | 6 - 2 = 4 penalty |
+| Valid | Invalid | Duplicate | Invalid Penalty | Duplicate Penalty | Total Penalty | Net Points |
+|-------|---------|-----------|-----------------|-------------------|---------------|------------|
+| 5 | 3 | 2 | 0 | 0 | 0 | 5 |
+| 5 | 7 | 2 | 2 | 0 | 2 | 3 |
+| 5 | 3 | 8 | 0 | 3 | 3 | 2 |
+| 5 | 7 | 8 | 2 | 3 | 5 | 0 |
+| 2 | 6 | 4 | 4 | 2 | 6 | -4 (penalized) |
 
 ### Recovery
 
 To recover from penalty status:
-1. Submit new valid issues
-2. Accumulate positive balance
-3. Weight returns when balance ≥ 0
+1. Submit new valid issues (within the 24h window)
+2. Accumulate positive net points
+3. Weight returns when net_points > 0
 
 ### Examples
 
-| Miner | Valid | Invalid | Penalty | Balance | Status |
-|-------|-------|---------|---------|---------|--------|
-| A | 5 | 2 | 0 | 5 | ✅ OK |
-| B | 3 | 8 | 5 | -2 | ❌ Penalized |
-| C | 10 | 0 | 0 | 10 | ✅ OK |
+| Miner | Valid | Invalid | Duplicate | Penalty | Net Points | Status |
+|-------|-------|---------|-----------|---------|------------|--------|
+| A | 5 | 2 | 1 | 0 | 5 | OK |
+| B | 3 | 8 | 0 | 5 | -2 | Penalized |
+| C | 10 | 0 | 0 | 0 | 10 | OK |
+| D | 4 | 6 | 6 | 4 | 0 | Penalized |
 
 ---
 
@@ -173,9 +191,9 @@ To recover from penalty status:
 
 ### Weight Submission
 
-Weights are submitted to Bittensor without normalization:
-- Each user's weight represents their actual earned percentage
-- Total weights may sum to less than 1.0
+Weights are submitted to Bittensor as raw values:
+- Each user's weight is `net_points * 0.02`
+- Normalization is handled at the API level
 - Remainder goes to burn (handled by validator)
 
 ### On-Chain Format
@@ -191,50 +209,66 @@ $$W_{chain} = \lfloor W_{user} \times 65535 \rfloor$$
 ### Example 1: New Miner
 
 ```
-Miner registers and submits 5 valid issues:
-  Points: 5 issues × 1 point = 5 points
+Miner registers and submits 5 valid issues (within 24h):
+  Valid Points: 5 issues × 1 point = 5 points
+  Penalty: 0 (no invalid or duplicate issues)
+  Net Points: 5
   Weight: 5 × 0.02 = 0.10 (10%)
 ```
 
 ### Example 2: Active Miner with Stars
 
 ```
-Miner has 20 valid issues and starred 4 repos:
+Miner has 20 valid issues (24h) and starred 4 repos:
   Issue Points: 20 × 1 = 20
   Star Points: 4 × 0.25 = 1.0
-  Total: 21 points
+  Penalty: 0
+  Net Points: 21
   Weight: 21 × 0.02 = 0.42 (42%)
 ```
 
-### Example 3: Maximum Weight
+### Example 3: High-Activity Miner
 
 ```
-Miner has 48 valid issues and starred 5 repos:
+Miner has 48 valid issues (24h) and starred 5 repos:
   Issue Points: 48 × 1 = 48
   Star Points: 5 × 0.25 = 1.25
-  Total: 49.25 points
+  Penalty: 0
+  Net Points: 49.25
   Weight: 49.25 × 0.02 = 0.985 (98.5%)
 
 If they get 2 more valid issues:
-  Total: 51.25 points
-  Weight: min(51.25 × 0.02, 1.0) = 1.0 (100% capped)
+  Net Points: 51.25
+  Weight: 51.25 × 0.02 = 1.025 (raw, normalized at API level)
 ```
 
-### Example 4: Dynamic Penalty
+### Example 4: Dynamic Penalty (Invalid Only)
 
 ```
-Miner has 3 valid issues and 8 invalid issues:
+Miner has 3 valid issues, 8 invalid issues, 0 duplicate:
   Valid Points: 3
-  Invalid Count: 8
-  Penalty: max(0, 8 - 3) = 5 points
+  Invalid Penalty: max(0, 8 - 3) = 5
+  Duplicate Penalty: 0
   Net Points: 3 - 5 = -2 (negative)
   Weight: 0 (penalized)
 
 To recover, they need 3 more valid issues:
   Valid: 6, Invalid: 8
-  Penalty: max(0, 8 - 6) = 2
+  Invalid Penalty: max(0, 8 - 6) = 2
   Net Points: 6 - 2 = 4 (positive)
   Weight: 4 × 0.02 = 0.08 (8%)
+```
+
+### Example 5: Dynamic Penalty (Invalid + Duplicate)
+
+```
+Miner has 5 valid issues, 7 invalid issues, 8 duplicate issues:
+  Valid Points: 5
+  Invalid Penalty: max(0, 7 - 5) = 2
+  Duplicate Penalty: max(0, 8 - 5) = 3
+  Total Penalty: 2 + 3 = 5
+  Net Points: 5 - 5 = 0
+  Weight: 0 (penalized)
 ```
 
 ---
@@ -245,12 +279,13 @@ To recover, they need 3 more valid issues:
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `max_points_for_full_weight` | 50 | Points for 100% weight |
 | `weight_per_point` | 0.02 | Weight earned per point |
 | `valid_label` | "valid" | Required label for rewards |
 | `star_bonus_per_repo` | 0.25 | Points per starred repo |
 | `invalid_penalty` | dynamic | max(0, invalid - valid) |
+| `duplicate_penalty` | dynamic | max(0, duplicate - valid) |
 | `min_valid_for_stars` | 2 | Min valid issues for star bonus |
+| `time_window` | 24 hours | Rolling window for calculations |
 
 ### Configuration File
 
@@ -258,7 +293,6 @@ In `config.toml`:
 
 ```toml
 [rewards]
-max_points_for_full_weight = 50
 weight_per_point = 0.02
 valid_label = "valid"
 ```
@@ -269,12 +303,13 @@ valid_label = "valid"
 
 ```mermaid
 flowchart LR
-    A["Valid Issue"] --> B["+1 Point"]
+    A["Valid Issue (24h)"] --> B["+1 Point"]
     C["Star Repo"] --> D["+0.25 Points"]
-    E["Invalid Issue"] --> F["Dynamic Penalty"]
-    B --> G["Total Points"]
-    D --> G
-    F --> G
-    G --> H["Weight = Points × 0.02"]
-    H --> I["Capped at 100%"]
+    E["Invalid Issue (24h)"] --> F["Dynamic Penalty"]
+    G["Duplicate Issue (24h)"] --> F
+    B --> H["Net Points"]
+    D --> H
+    F --> H
+    H --> I["Weight = Net Points × 0.02"]
+    I --> J["Normalized at API level"]
 ```
