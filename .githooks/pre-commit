@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Allow skipping hooks for automated commits
+if [ "${SKIP_GIT_HOOKS:-0}" = "1" ]; then
+    exit 0
+fi
+
 # Source cargo environment
 if [ -f "$HOME/.cargo/env" ]; then
     source "$HOME/.cargo/env"

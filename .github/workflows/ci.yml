@@ -21,39 +21,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "bounty-ci"
-      - run: cargo build --release
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "bounty-ci"
-          save-if: false
-      - run: |
-          cargo clippy --all-targets --workspace -- -W clippy::all \
+
+      # Format
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      # Clippy
+      - name: Run clippy
+        run: |
+          cargo clippy --all-targets --workspace -- -W clippy::all -D warnings \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity \
             -A clippy::large_enum_variant \
             -A clippy::should_implement_trait
 
-  test:
-    name: Test
+      # Test
+      - name: Run tests
+        run: cargo test --workspace -- --skip live --skip integration
+
+      # Build
+      - name: Build release
+        run: cargo build --release
+
+  test-coverage:
+    name: Coverage
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [check]
     permissions:
       contents: write
     steps:
@@ -69,18 +76,12 @@ jobs:
           shared-key: "bounty-ci"
           save-if: false
 
-      - name: Run tests
-        if: github.ref != 'refs/heads/main'
-        run: cargo nextest run --workspace -E 'not (test(/live/) | test(/integration/))'
-
       - name: Run tests with coverage
-        if: github.ref == 'refs/heads/main'
         run: |
           cargo llvm-cov nextest --workspace --json --output-path coverage.json -E 'not (test(/live/) | test(/integration/))'
           cargo llvm-cov report --html --output-dir coverage-report
 
       - name: Generate and deploy coverage badge
-        if: github.ref == 'refs/heads/main'
         run: |
           COVERAGE=$(jq '.data[0].totals.lines.percent // 0 | round' coverage.json)
           echo "Coverage: $COVERAGE%"
@@ -92,7 +93,6 @@ jobs:
           curl -s "https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}" > badges/coverage.svg
 
       - uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./badges
@@ -100,7 +100,6 @@ jobs:
           keep_files: true
 
       - name: Upload coverage HTML report
-        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-html
@@ -108,7 +107,6 @@ jobs:
 
       - name: Deploy coverage report
         uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./coverage-report
@@ -118,7 +116,7 @@ jobs:
   docker:
     name: Docker
     runs-on: ubuntu-latest
-    needs: [build, clippy, test]
+    needs: [check]
     permissions:
       contents: read
       packages: write
@@ -156,24 +154,52 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [build, clippy, test, docker]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "bounty-ci"
           save-if: false
-      - run: cargo build --release
-      - run: |
+
+      - name: Build release binaries
+        run: cargo build --release
+
+      - name: Package release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
           mkdir -p release
           cp target/release/bounty release/
           cp target/release/bounty-server release/
           tar -czvf bounty-challenge-${{ github.ref_name }}-linux-x86_64.tar.gz -C release .
-      - uses: softprops/action-gh-release@v2
+
+      - name: GitHub Release (tag-based)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
           files: bounty-challenge-${{ github.ref_name }}-linux-x86_64.tar.gz
           generate_release_notes: true
+
+      - name: Setup Node.js (semantic-release)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Semantic Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git
+          npx semantic-release

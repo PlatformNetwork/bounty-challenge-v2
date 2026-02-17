@@ -1,11 +1,13 @@
 #!/bin/bash
-# Pre-push hook for bounty-challenge
-# Run this before pushing to ensure CI will pass
+set -e
+
+# Allow skipping hooks for automated commits
+if [ "${SKIP_GIT_HOOKS:-0}" = "1" ]; then
+    exit 0
+fi
 
 # Source cargo environment
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
-
-set -e
 
 echo "🔍 Running pre-push checks..."
 echo ""
