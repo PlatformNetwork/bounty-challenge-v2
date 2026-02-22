@@ -22,6 +22,31 @@ Bounty Challenge is a decentralized issue reward system on the Bittensor network
 | **Metagraph** | `src/metagraph.rs` | Metagraph caching |
 | **CLI** | `src/bin/bounty/` | Command-line interface |
 | **Health Server** | `src/bin/bounty-health-server.rs` | Standalone health check server |
+| **WASM Module** | `wasm/` | On-chain WASM evaluation module |
+
+### WASM Module (`wasm/`)
+
+The `wasm/` directory contains a standalone `no_std` WASM module that implements the `Challenge` trait from `platform-challenge-sdk-wasm`. It runs inside the validator's WASM runtime and handles evaluation, validation, routing, and weight calculation on-chain.
+
+| File | Description |
+|------|-------------|
+| `wasm/Cargo.toml` | Crate config (`cdylib` + `rlib` targets) |
+| `wasm/src/lib.rs` | `BountyChallengeWasm` – `Challenge` trait impl |
+| `wasm/src/types.rs` | Domain types: `BountySubmission`, `IssueRecord`, `UserRegistration`, `LeaderboardEntry`, etc. |
+| `wasm/src/storage/bounty_storage.rs` | On-chain key/value storage via `host_storage_get/set` |
+| `wasm/src/scoring.rs` | Weight calculation (`WEIGHT_PER_POINT = 0.02`, `STAR_BONUS_PER_REPO = 0.25`) |
+| `wasm/src/consensus.rs` | Validator consensus for issue validity and sync data |
+| `wasm/src/validation.rs` | Issue validation and claim processing |
+| `wasm/src/api/handlers.rs` | Route handlers (leaderboard, stats, register, claim, etc.) |
+| `wasm/src/routes.rs` | Route definitions and request dispatch |
+
+**Building:**
+
+```bash
+cd wasm && cargo build --release --target wasm32-unknown-unknown
+```
+
+**Storage key patterns:** `user:<hotkey>`, `github:<username>`, `issue:<owner>/<repo>:<number>`, `balance:<hotkey>`, `leaderboard`, `registered_hotkeys`, `synced_issues`
 
 ## Coding Guidelines
 
