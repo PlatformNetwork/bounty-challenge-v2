@@ -2,23 +2,15 @@
 
 Complete API documentation for Bounty Challenge.
 
-## Base URLs
+## Base URL
 
-### Bridge API (Recommended)
-
-All requests should go through the platform bridge:
+All requests go through the Platform Network validator bridge:
 
 ```
 https://chain.platform.network/api/v1/bridge/bounty-challenge/
 ```
 
-### Direct Server (Development)
-
-For local development or direct server access:
-
-```
-http://localhost:8080/
-```
+> **Note**: The WASM module uses bincode serialization internally. The Platform bridge handles JSON ↔ bincode translation for external HTTP clients.
 
 ---
 
@@ -26,7 +18,7 @@ http://localhost:8080/
 
 ### Signature-Based Authentication
 
-Requests that modify state require sr25519 signatures:
+Routes marked as requiring auth need a valid `auth_hotkey` provided by the Platform bridge. The bridge verifies sr25519 signatures before forwarding requests to the WASM module.
 
 ```
 message = "{action}:{data}:{timestamp}"
@@ -43,31 +35,11 @@ signature = sr25519_sign(message, secret_key)
 
 ## Endpoints
 
-### Health Check
-
-Check if the server is healthy.
-
-**GET** `/health`
-
-**Response:**
-```json
-{
-  "healthy": true,
-  "load": 0.0,
-  "pending": 0,
-  "uptime_secs": 3600,
-  "version": "0.1.0",
-  "challenge_id": "bounty-challenge"
-}
-```
-
----
-
 ### Register
 
 Register a GitHub username with a hotkey.
 
-**POST** `/register`
+**POST** `/register` (requires auth)
 
 **Request Body:**
 ```json
@@ -84,28 +56,13 @@ Register a GitHub username with a hotkey.
 register_github:{github_username_lowercase}:{timestamp}
 ```
 
-**Success Response (200):**
-```json
-{
-  "success": true,
-  "message": "Successfully registered @johndoe with your hotkey."
-}
-```
-
-**Error Response (400):**
-```json
-{
-  "success": false,
-  "error": "Invalid signature. Make sure you're using the correct key."
-}
-```
+**Response:** `true` on success, `false` on failure.
 
 **Possible Errors:**
 | Error | Cause |
 |-------|-------|
-| `Timestamp expired` | Request older than 5 minutes |
-| `Invalid signature` | Signature doesn't match hotkey |
-| `Registration failed` | Database error |
+| 401 | Missing or invalid authentication |
+| 400 | Invalid request body |
 
 ---
 
@@ -113,7 +70,7 @@ register_github:{github_username_lowercase}:{timestamp}
 
 Get status for a specific hotkey.
 
-**GET** `/status/{hotkey}`
+**GET** `/status/:hotkey`
 
 **Path Parameters:**
 | Parameter | Type | Description |
@@ -127,9 +84,14 @@ Get status for a specific hotkey.
   "github_username": "johndoe",
   "valid_issues_count": 5,
   "invalid_issues_count": 2,
-  "balance": 3,
-  "is_penalized": false,
-  "weight": 0.05
+  "balance": {
+    "valid_count": 5,
+    "invalid_count": 2,
+    "duplicate_count": 0,
+    "star_count": 3,
+    "is_penalized": false
+  },
+  "weight": 0.13
 }
 ```
 
@@ -138,11 +100,16 @@ Get status for a specific hotkey.
 {
   "registered": false,
   "github_username": null,
-  "valid_issues_count": null,
-  "invalid_issues_count": null,
-  "balance": null,
-  "is_penalized": false,
-  "weight": null
+  "valid_issues_count": 0,
+  "invalid_issues_count": 0,
+  "balance": {
+    "valid_count": 0,
+    "invalid_count": 0,
+    "duplicate_count": 0,
+    "star_count": 0,
+    "is_penalized": false
+  },
+  "weight": 0.0
 }
 ```
 
@@ -154,29 +121,24 @@ Get current standings.
 
 **GET** `/leaderboard`
 
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 20 | Number of entries to return |
-
 **Response:**
 ```json
-{
-  "leaderboard": [
-    {
-      "github_username": "alice",
-      "hotkey": "5GrwvaEF...",
-      "issues_resolved_24h": 12,
-      "weight": 0.12
-    },
-    {
-      "github_username": "bob",
-      "hotkey": "5FHneW46...",
-      "issues_resolved_24h": 8,
-      "weight": 0.08
-    }
-  ]
-}
+[
+  {
+    "rank": 1,
+    "hotkey": "5GrwvaEF...",
+    "github_username": "alice",
+    "score": 0.24,
+    "valid_issues": 12,
+    "invalid_issues": 0,
+    "pending_issues": 0,
+    "star_count": 3,
+    "star_bonus": 0.75,
+    "net_points": 12.75,
+    "is_penalized": false,
+    "last_epoch": 100
+  }
+]
 ```
 
 ---
@@ -191,48 +153,45 @@ Get challenge statistics.
 ```json
 {
   "total_bounties": 150,
-  "total_miners": 25,
-  "total_invalid": 10,
-  "penalized_miners": 3,
-  "challenge_id": "bounty-challenge",
-  "version": "0.1.0"
+  "active_miners": 25,
+  "validator_count": 5,
+  "total_issues": 200
 }
 ```
 
 ---
 
-### Record Invalid Issue
+### Claim
 
-Record an invalid issue (maintainers only).
+Claim bounty for resolved issues.
 
-**POST** `/invalid`
+**POST** `/claim` (requires auth)
 
 **Request Body:**
 ```json
 {
-  "issue_id": 123,
+  "hotkey": "5GrwvaEF...",
+  "github_username": "johndoe",
+  "issue_numbers": [42, 43, 44],
   "repo_owner": "PlatformNetwork",
   "repo_name": "bounty-challenge",
-  "github_username": "johndoe",
-  "issue_url": "https://github.com/PlatformNetwork/bounty-challenge/issues/123",
-  "issue_title": "Optional title",
-  "reason": "Optional reason for marking invalid"
+  "signature": "0x...",
+  "timestamp": 1705590000
 }
 ```
 
-**Success Response (200):**
+**Response:**
 ```json
 {
-  "success": true,
-  "message": "Recorded invalid issue #123 by @johndoe"
-}
-```
-
-**Error Response:**
-```json
-{
-  "success": false,
-  "error": "Failed to record invalid issue: <error message>"
+  "claimed": [
+    { "issue_number": 42 },
+    { "issue_number": 43 }
+  ],
+  "rejected": [
+    { "issue_number": 44, "reason": "Issue already claimed" }
+  ],
+  "total_valid": 7,
+  "score": 0.14
 }
 ```
 
@@ -240,90 +199,36 @@ Record an invalid issue (maintainers only).
 
 ### List Issues
 
-Get a list of issues from the cache.
+Get all synced issues.
 
 **GET** `/issues`
 
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `state` | string | - | Filter by issue state (open, closed) |
-| `label` | string | - | Filter by label |
-| `limit` | integer | 100 | Maximum number of issues to return (max: 1000) |
-| `offset` | integer | 0 | Number of issues to skip |
-
-**Response:**
+**Response:** Array of `IssueRecord` objects:
 ```json
-{
-  "issues": [
-    {
-      "id": 123,
-      "title": "Issue title",
-      "state": "closed",
-      "labels": ["valid"],
-      "user": "johndoe",
-      "created_at": "2025-01-15T10:00:00Z",
-      "closed_at": "2025-01-16T15:30:00Z"
-    }
-  ],
-  "count": 10,
-  "limit": 100,
-  "offset": 0
-}
+[
+  {
+    "issue_number": 42,
+    "repo_owner": "PlatformNetwork",
+    "repo_name": "bounty-challenge",
+    "author": "johndoe",
+    "is_closed": true,
+    "has_valid_label": true,
+    "has_invalid_label": false,
+    "claimed_by_hotkey": "5GrwvaEF...",
+    "recorded_epoch": 100
+  }
+]
 ```
 
 ---
 
 ### List Pending Issues
 
-Get a list of pending (unprocessed) issues.
+Get pending (unclaimed, open) issues.
 
 **GET** `/issues/pending`
 
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 100 | Maximum number of issues to return (max: 1000) |
-| `offset` | integer | 0 | Number of issues to skip |
-
-**Response:**
-```json
-{
-  "issues": [
-    {
-      "id": 456,
-      "title": "Pending issue title",
-      "state": "open",
-      "labels": [],
-      "user": "alice",
-      "created_at": "2025-01-17T08:00:00Z"
-    }
-  ],
-  "count": 5,
-  "limit": 100,
-  "offset": 0
-}
-```
-
----
-
-### Issues Statistics
-
-Get statistics about issues.
-
-**GET** `/issues/stats`
-
-**Response:**
-```json
-{
-  "total_issues": 500,
-  "open_issues": 50,
-  "closed_issues": 450,
-  "valid_issues": 200,
-  "invalid_issues": 30,
-  "pending_issues": 20
-}
-```
+**Response:** Array of `IssueRecord` objects (filtered to unclosed, unclaimed issues).
 
 ---
 
@@ -331,246 +236,188 @@ Get statistics about issues.
 
 Get detailed information for a specific hotkey.
 
-**GET** `/hotkey/{hotkey}`
+**GET** `/hotkey/:hotkey`
 
 **Path Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `hotkey` | string | SS58-encoded hotkey |
 
-**Response:**
+**Response:** Same format as `/status/:hotkey` (returns `StatusResponse`).
+
+**Not Found:** Returns 404 if hotkey is not registered.
+
+---
+
+### Record Invalid Issue
+
+Record an invalid issue.
+
+**POST** `/invalid` (requires auth)
+
+**Request Body:**
 ```json
 {
-  "hotkey": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+  "issue_number": 123,
+  "repo_owner": "PlatformNetwork",
+  "repo_name": "bounty-challenge",
   "github_username": "johndoe",
-  "registered_at": "2025-01-10T12:00:00Z",
-  "valid_issues_count": 15,
-  "invalid_issues_count": 2,
-  "balance": 13,
-  "is_penalized": false,
-  "weight": 0.15,
-  "recent_issues": [
+  "reason": "Not a real bug"
+}
+```
+
+**Response:** `true` on success, `false` on failure.
+
+---
+
+### Propose Sync Data
+
+Propose synced issue data for validator consensus.
+
+**POST** `/sync/propose` (requires auth)
+
+**Request Body:**
+```json
+{
+  "validator_id": "validator-1",
+  "issues": [
     {
-      "id": 123,
-      "title": "Fixed bug in API",
-      "resolved_at": "2025-01-16T15:30:00Z"
+      "issue_number": 42,
+      "repo_owner": "PlatformNetwork",
+      "repo_name": "bounty-challenge",
+      "author": "johndoe",
+      "is_closed": true,
+      "has_valid_label": true,
+      "has_invalid_label": false,
+      "claimed_by_hotkey": null,
+      "recorded_epoch": 100
     }
   ]
 }
 ```
 
-**Not Found Response:**
-```json
-{
-  "error": "Hotkey not found"
-}
-```
+**Response:** `true` if proposal was recorded. If consensus is reached, the synced issues are automatically stored.
 
 ---
 
-### GitHub User Details
+### Check Sync Consensus
 
-Get detailed information for a GitHub user.
+Check the current sync consensus status.
 
-**GET** `/github/{username}`
+**GET** `/sync/consensus`
 
-**Path Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `username` | string | GitHub username |
+**Response:** The consensus result (array of `IssueRecord` if consensus reached, `null` otherwise).
+
+---
+
+### Propose Issue Validity
+
+Propose whether a specific issue is valid or invalid.
+
+**POST** `/issue/propose` (requires auth)
+
+**Request Body:**
+```json
+{
+  "validator_id": "validator-1",
+  "issue_number": 42,
+  "repo_owner": "PlatformNetwork",
+  "repo_name": "bounty-challenge",
+  "is_valid": true
+}
+```
+
+**Response:** `true` if proposal was recorded.
+
+---
+
+### Check Issue Consensus
+
+Check consensus on a specific issue's validity.
+
+**POST** `/issue/consensus`
+
+**Request Body:**
+```json
+{
+  "issue_number": 42,
+  "repo_owner": "PlatformNetwork",
+  "repo_name": "bounty-challenge"
+}
+```
+
+**Response:** `true` if consensus says valid, `false` if invalid, `null` if no consensus yet.
+
+---
+
+### Get Timeout Config
+
+Get current timeout configuration.
+
+**GET** `/config/timeout`
 
 **Response:**
 ```json
 {
-  "github_username": "johndoe",
-  "hotkey": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-  "registered_at": "2025-01-10T12:00:00Z",
-  "valid_issues_count": 15,
-  "invalid_issues_count": 2,
-  "balance": 13,
-  "is_penalized": false,
-  "weight": 0.15,
-  "recent_issues": [
-    {
-      "id": 123,
-      "title": "Fixed bug in API",
-      "resolved_at": "2025-01-16T15:30:00Z"
-    }
-  ]
-}
-```
-
-**Not Found Response:**
-```json
-{
-  "error": "GitHub user not found"
+  "review_timeout_blocks": 1800,
+  "sync_timeout_blocks": 300
 }
 ```
 
 ---
 
-### Sync Status
+### Set Timeout Config
 
-Get the current synchronization status for all repositories.
+Update timeout configuration.
 
-**GET** `/sync/status`
+**POST** `/config/timeout` (requires auth)
 
-**Response:**
+**Request Body:**
 ```json
 {
-  "repos": [
-    {
-      "owner": "PlatformNetwork",
-      "repo": "bounty-challenge",
-      "last_synced_at": "2025-01-17T10:00:00Z",
-      "issues_count": 150,
-      "status": "synced"
-    }
-  ],
-  "issues_stats": {
-    "total_issues": 500,
-    "open_issues": 50,
-    "closed_issues": 450
-  }
+  "review_timeout_blocks": 1800,
+  "sync_timeout_blocks": 300
 }
 ```
 
----
-
-### Trigger Sync
-
-Trigger a manual synchronization of issues from GitHub.
-
-**POST** `/sync/trigger`
-
-**Response (Success):**
-```json
-{
-  "success": true,
-  "issues_synced": 150,
-  "errors": []
-}
-```
-
-**Response (Partial Failure):**
-```json
-{
-  "success": false,
-  "issues_synced": 100,
-  "errors": [
-    "PlatformNetwork/other-repo: rate limit exceeded"
-  ]
-}
-```
+**Response:** `true` on success.
 
 ---
 
 ### Get Weights
 
-Get current weight calculations for all miners.
+Get normalized weight assignments for all miners.
 
 **GET** `/get_weights`
 
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `epoch` | integer | current | Epoch number |
-
 **Response:**
 ```json
-{
-  "weights": [
-    {
-      "hotkey": "5GrwvaEF...",
-      "weight": 0.35
-    },
-    {
-      "hotkey": "5FHneW46...",
-      "weight": 0.25
-    }
-  ],
-  "epoch": 12345,
-  "challenge_id": "bounty-challenge",
-  "total_miners": 15
-}
-```
-
----
-
-### Config
-
-Get challenge configuration.
-
-**GET** `/config`
-
-**Response:**
-```json
-{
-  "challenge_id": "bounty-challenge",
-  "name": "Bounty Challenge",
-  "version": "0.1.0",
-  "config_schema": {
-    "type": "object",
-    "properties": {
-      "action": {
-        "type": "string",
-        "enum": ["register", "claim", "leaderboard"]
-      },
-      "github_username": {
-        "type": "string"
-      }
-    }
+[
+  {
+    "hotkey": "5GrwvaEF...",
+    "weight": 0.35
   },
-  "features": ["github-verification", "anti-abuse"],
-  "limits": {
-    "max_submission_size": 10240,
-    "max_evaluation_time": 60
+  {
+    "hotkey": "5FHneW46...",
+    "weight": 0.25
   }
-}
+]
 ```
+
+Weights are normalized to sum to 1.0 across all non-penalized miners with positive scores.
 
 ---
 
 ## Error Handling
-
-### Error Response Format
-
-```json
-{
-  "success": false,
-  "error": "Error message here"
-}
-```
 
 ### HTTP Status Codes
 
 | Code | Meaning |
 |------|---------|
 | 200 | Success |
-| 400 | Bad Request (validation error) |
-| 401 | Unauthorized (invalid signature) |
-| 404 | Not Found |
-| 500 | Internal Server Error |
-
-### Common Errors
-
-| Error Message | Cause | Solution |
-|--------------|-------|----------|
-| `Timestamp expired` | Request too old | Use current timestamp |
-| `Invalid signature` | Wrong key used | Verify secret key |
-| `Registration failed` | DB error | Retry or contact support |
-| `Hotkey not found` | Not registered | Register first |
-
----
-
-## Rate Limits
-
-| Endpoint | Limit |
-|----------|-------|
-| `/register` | 10/minute |
-| `/status/*` | 60/minute |
-| `/leaderboard` | 30/minute |
-| `/stats` | 30/minute |
+| 400 | Bad Request (invalid body or parameters) |
+| 401 | Unauthorized (missing authentication) |
+| 404 | Not Found (unknown route or resource) |
 
 ---
 
@@ -605,37 +452,6 @@ response = requests.post(
 print(response.json())
 ```
 
-### Rust
-
-```rust
-use sp_core::{sr25519, Pair};
-use reqwest::Client;
-use serde_json::json;
-
-async fn register(secret_key: &str, github_username: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let pair = sr25519::Pair::from_string(secret_key, None)?;
-    let timestamp = chrono::Utc::now().timestamp();
-    
-    let message = format!("register_github:{}:{}", github_username.to_lowercase(), timestamp);
-    let signature = pair.sign(message.as_bytes());
-    
-    let client = Client::new();
-    let response = client
-        .post("https://chain.platform.network/api/v1/bridge/bounty-challenge/register")
-        .json(&json!({
-            "hotkey": encode_ss58(&pair.public().0),
-            "github_username": github_username,
-            "signature": hex::encode(signature.0),
-            "timestamp": timestamp
-        }))
-        .send()
-        .await?;
-    
-    println!("{}", response.text().await?);
-    Ok(())
-}
-```
-
 ### JavaScript
 
 ```javascript
@@ -667,18 +483,3 @@ async function register(mnemonic, githubUsername) {
     console.log(await response.json());
 }
 ```
-
----
-
-## WebSocket API
-
-*Coming soon: Real-time updates via WebSocket*
-
-```
-wss://chain.platform.network/api/v1/ws/bounty-challenge
-```
-
-Events:
-- `issue_validated` - New issue validated
-- `weight_updated` - Weights recalculated
-- `leaderboard_changed` - Rankings changed

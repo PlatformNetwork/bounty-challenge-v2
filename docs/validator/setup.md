@@ -1,330 +1,194 @@
 # Validator Setup Guide
 
-This guide explains how to run a Bounty Challenge validator.
+This guide explains how to run a Bounty Challenge validator using the WASM module.
 
 ## Overview
 
-Validators perform two key functions:
-1. **Auto-scan**: Periodically scan GitHub for new valid issues
-2. **Credit rewards**: Link issues to registered miners and update weights
+Bounty Challenge runs as a WASM module inside the Platform Network validator runtime. Validators:
+1. **Load the WASM module**: The compiled `.wasm` binary is loaded by the validator runtime
+2. **Provide host storage**: Key/value storage is provided via host functions
+3. **Route HTTP requests**: The validator bridges HTTP requests to the WASM module's `handle_route()` function
+4. **Submit weights**: The validator calls `get_weights()` to obtain weight assignments for on-chain submission
 
 ## Prerequisites
 
-- **Server**: Linux with 1+ CPU, 2GB RAM
-- **Network**: Outbound HTTPS access to GitHub API and Platform
-- **Database**: PostgreSQL 14+ (or access to Platform's PostgreSQL)
-- **Bittensor**: Validator hotkey registered on the subnet
+- **Platform Validator**: A running [Platform Network](https://github.com/PlatformNetwork/platform-v2) validator node
+- **Bittensor Wallet**: Validator hotkey registered on the subnet
+- **WASM Module**: The compiled `bounty_challenge.wasm` binary
 
-## Installation
-
-### 1. Build from Source
+## Building the WASM Module
 
 ```bash
 # Clone repository
 git clone https://github.com/PlatformNetwork/bounty-challenge.git
 cd bounty-challenge
 
+# Install WASM target (one-time)
+rustup target add wasm32-unknown-unknown
+
 # Build release
-cargo build --release
+cargo build --release --target wasm32-unknown-unknown
 
-# Verify
-./target/release/bounty --version
+# Output: target/wasm32-unknown-unknown/release/bounty_challenge.wasm
 ```
 
-### 2. Set Environment Variables
+## Deploying the Module
+
+### 1. Copy the WASM Binary
+
+Copy the compiled module to your Platform validator's challenge directory:
 
 ```bash
-# Required
-export DATABASE_URL="postgres://user:pass@localhost:5432/bounty"
-export GITHUB_TOKEN="ghp_xxxxxxxxxxxx"
-
-# Optional
-export CHALLENGE_HOST="0.0.0.0"
-export CHALLENGE_PORT="8080"
-export PLATFORM_URL="https://chain.platform.network"
-export VALIDATOR_HOTKEY="5FHneW46..."
+cp target/wasm32-unknown-unknown/release/bounty_challenge.wasm \
+   /path/to/platform-validator/challenges/
 ```
 
-### 3. Initialize Database
+### 2. Configure the Validator
 
-The server automatically runs migrations on startup. Alternatively:
+Add the bounty challenge to your Platform validator configuration. Refer to the [Platform Network documentation](https://github.com/PlatformNetwork/platform-v2) for details on loading WASM challenge modules.
 
-```bash
-psql $DATABASE_URL < migrations/002_rewards_schema.sql
-```
+### 3. Verify Loading
 
-## Running the Validator
+Once the validator starts, it will:
+1. Load `bounty_challenge.wasm` into the WASM runtime
+2. Call `name()` → returns `"bounty-challenge"`
+3. Call `version()` → returns `"2.0.0"`
+4. Register the module's HTTP routes via `routes()`
 
-### Server Mode
-
-Run the full server with auto-scanning:
-
-```bash
-./target/release/bounty server
-```
-
-Or with explicit options:
-
-```bash
-./target/release/bounty server --host 0.0.0.0 --port 8080
-```
-
-### Validate Mode
-
-Run validator-only mode (no HTTP server):
-
-```bash
-./target/release/bounty validate \
-    --platform https://chain.platform.network \
-    --hotkey $VALIDATOR_HOTKEY
-```
-
-## Configuration
-
-### config.toml
-
-```toml
-[github]
-client_id = "Ov23liAkfvnMhA6C68iy"
-
-# Target repository for bounties
-[[github.repos]]
-owner = "PlatformNetwork"
-repo = "bounty-challenge"
-
-[server]
-host = "0.0.0.0"
-port = 8080
-
-[database]
-# PostgreSQL URL from environment variable DATABASE_URL
-# Set DATABASE_URL environment variable for PostgreSQL connection
-
-[rewards]
-# 50 points = 100% weight (1 point per valid issue + 0.25 per starred repo)
-max_points_for_full_weight = 50
-weight_per_point = 0.02
-valid_label = "valid"
-```
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `GITHUB_TOKEN` | Yes | GitHub API token (for rate limits) |
-| `PLATFORM_URL` | No | Platform server URL |
-| `VALIDATOR_HOTKEY` | No | Your validator hotkey |
-| `CHALLENGE_HOST` | No | Server bind address |
-| `CHALLENGE_PORT` | No | Server port |
-
-## Auto-Scan Process
-
-### Scan Interval
-
-By default, validators scan every **5 minutes**:
+## Architecture
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Fetch closed │────▶│ Filter with  │────▶│ Credit to    │
-│ issues       │     │ 'valid' label│     │ miners       │
-└──────────────┘     └──────────────┘     └──────────────┘
+┌──────────────────────────────────────────────┐
+│              Platform Validator               │
+│                                              │
+│  ┌──────────────┐    ┌───────────────────┐   │
+│  │ WASM Runtime  │───▶│ bounty_challenge  │   │
+│  │              │    │     .wasm         │   │
+│  └──────┬───────┘    └───────────────────┘   │
+│         │                                    │
+│  ┌──────▼───────┐                            │
+│  │ Host Storage  │  (key/value pairs)        │
+│  └──────────────┘                            │
+│                                              │
+│  ┌──────────────┐                            │
+│  │ HTTP Bridge   │  (routes requests to WASM)│
+│  └──────────────┘                            │
+└──────────────────────────────────────────────┘
 ```
 
-### What Gets Scanned
+### Host Functions
 
-1. **Target repos**: All repos in config.toml
-2. **Issue state**: Only closed issues
-3. **Label filter**: Only issues with `valid` label
-4. **Time filter**: Since last scan timestamp
+The WASM module communicates with the validator via host functions:
 
-### Crediting Process
+| Function | Purpose |
+|----------|---------|
+| `host_storage_get(key)` | Read a value from persistent storage |
+| `host_storage_set(key, value)` | Write a value to persistent storage |
+| `host_consensus_get_epoch()` | Get the current consensus epoch |
+| `host_consensus_get_submission_count()` | Get total submission count |
 
-For each valid issue:
-1. Check if already credited (by issue ID)
-2. Look up GitHub username → hotkey mapping
-3. Calculate weight at time of resolution
-4. Record in `resolved_issues` table
+### Storage Keys
+
+The module uses these key patterns in host storage:
+
+| Key Pattern | Description |
+|-------------|-------------|
+| `user:<hotkey>` | User registration data |
+| `github:<username>` | GitHub username → hotkey mapping |
+| `issue:<owner>/<repo>:<number>` | Claimed issue records |
+| `balance:<hotkey>` | User balance (valid/invalid counts) |
+| `leaderboard` | Serialized leaderboard entries |
+| `registered_hotkeys` | List of all registered hotkeys |
+| `synced_issues` | Consensus-agreed issue data |
+| `timeout_config` | Timeout configuration |
+
+## Consensus
+
+Validators participate in consensus for:
+
+### Issue Sync Consensus
+Multiple validators propose synced issue data via `/sync/propose`. When a majority agrees, the data is stored.
+
+### Issue Validity Consensus
+Validators propose issue validity via `/issue/propose`. Majority vote determines if an issue is valid or invalid.
+
+## API Routes
+
+The WASM module exposes these routes through the validator's HTTP bridge:
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/leaderboard` | No | Current standings |
+| GET | `/stats` | No | Challenge statistics |
+| GET | `/status/:hotkey` | No | Hotkey status and balance |
+| POST | `/register` | Yes | Register GitHub username with hotkey |
+| POST | `/claim` | Yes | Claim bounty for resolved issues |
+| GET | `/issues` | No | List all synced issues |
+| GET | `/issues/pending` | No | List pending issues |
+| GET | `/hotkey/:hotkey` | No | Detailed hotkey information |
+| POST | `/invalid` | Yes | Record an invalid issue |
+| POST | `/sync/propose` | Yes | Propose synced issue data |
+| GET | `/sync/consensus` | No | Check sync consensus status |
+| POST | `/issue/propose` | Yes | Propose issue validity |
+| POST | `/issue/consensus` | No | Check issue validity consensus |
+| GET | `/config/timeout` | No | Get timeout configuration |
+| POST | `/config/timeout` | Yes | Update timeout configuration |
+| GET | `/get_weights` | No | Normalized weight assignments |
+
+All routes are accessed via the Platform bridge:
+```
+https://chain.platform.network/api/v1/bridge/bounty-challenge/<path>
+```
 
 ## Monitoring
 
-### Health Check
+### Check Module Status
+
+Query the stats endpoint through the bridge:
 
 ```bash
-curl http://localhost:8080/health
+curl https://chain.platform.network/api/v1/bridge/bounty-challenge/stats
 ```
 
-Response:
-```json
-{
-  "healthy": true,
-  "uptime_secs": 3600,
-  "version": "0.1.0"
-}
-```
-
-### Stats
+### Check Leaderboard
 
 ```bash
-curl http://localhost:8080/stats
+curl https://chain.platform.network/api/v1/bridge/bounty-challenge/leaderboard
 ```
 
-Response:
-```json
-{
-  "total_bounties": 150,
-  "total_miners": 25
-}
-```
-
-### Logs
-
-Run with verbose logging:
+### Check Weights
 
 ```bash
-RUST_LOG=info ./target/release/bounty server
-```
-
-Log levels:
-- `error`: Critical errors only
-- `warn`: Warnings and errors
-- `info`: Normal operation (recommended)
-- `debug`: Detailed debugging
-- `trace`: Very verbose
-
-## Systemd Service
-
-### Create Service File
-
-```bash
-sudo nano /etc/systemd/system/bounty-validator.service
-```
-
-```ini
-[Unit]
-Description=Bounty Challenge Validator
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=bounty
-WorkingDirectory=/opt/bounty-challenge
-ExecStart=/opt/bounty-challenge/target/release/bounty server
-Restart=always
-RestartSec=10
-Environment=DATABASE_URL=postgres://user:pass@localhost:5432/bounty
-Environment=GITHUB_TOKEN=ghp_xxxx
-Environment=RUST_LOG=info
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Enable and Start
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable bounty-validator
-sudo systemctl start bounty-validator
-sudo systemctl status bounty-validator
-```
-
-### View Logs
-
-```bash
-sudo journalctl -u bounty-validator -f
-```
-
-## Docker Deployment
-
-### Dockerfile
-
-```dockerfile
-FROM rust:1.75 as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release
-
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/bounty /usr/local/bin/
-EXPOSE 8080
-CMD ["bounty", "server"]
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-
-services:
-  bounty:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=postgres://bounty:secret@db:5432/bounty
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - RUST_LOG=info
-    depends_on:
-      - db
-
-  db:
-    image: postgres:14
-    environment:
-      - POSTGRES_USER=bounty
-      - POSTGRES_PASSWORD=secret
-      - POSTGRES_DB=bounty
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-```
-
-### Run
-
-```bash
-GITHUB_TOKEN=ghp_xxx docker-compose up -d
+curl https://chain.platform.network/api/v1/bridge/bounty-challenge/get_weights
 ```
 
 ## Troubleshooting
 
-### "GitHub rate limit exceeded"
+### Module fails to load
 
-- **Cause**: Too many API requests without token
-- **Fix**: Set `GITHUB_TOKEN` environment variable
+- **Cause**: WASM binary not found or incompatible
+- **Fix**: Rebuild with `cargo build --release --target wasm32-unknown-unknown` and verify the `.wasm` file exists
 
-### "Database connection failed"
+### No issues appearing
 
-- **Cause**: Invalid `DATABASE_URL` or PostgreSQL not running
-- **Fix**: Verify connection string and database availability
+- **Cause**: No validators have proposed sync data yet
+- **Fix**: Ensure validators are submitting issue data via `/sync/propose`
 
-### "No issues found"
+### Consensus not reached
 
-- **Cause**: No closed issues with `valid` label
-- **Fix**: Verify target repos have valid issues
-
-### High Memory Usage
-
-- **Cause**: Large number of issues being processed
-- **Fix**: Increase server RAM or reduce scan batch size
+- **Cause**: Not enough validators have proposed matching data
+- **Fix**: Wait for more validators to submit proposals; majority agreement is required
 
 ## Security
 
-### GitHub Token
+### WASM Sandbox
 
-- Use a token with minimal permissions (read-only)
-- Store securely (environment variable, not in config)
-- Rotate regularly
+The module runs in a sandboxed WASM environment:
+- No direct filesystem access
+- No direct network access
+- All I/O goes through host functions
+- Memory is isolated per module
 
-### Database
+### Authentication
 
-- Use strong passwords
-- Enable SSL for remote connections
-- Restrict network access
-
-### Network
-
-- Use HTTPS for all external communication
-- Consider running behind a reverse proxy (nginx)
+Routes marked as `requires_auth: true` require the request to include a valid `auth_hotkey` verified by the Platform validator bridge.

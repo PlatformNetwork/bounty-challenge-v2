@@ -9,33 +9,99 @@ Registration links your GitHub username to your Bittensor hotkey. This allows th
 2. Credit rewards to your hotkey
 3. Prevent impersonation
 
-## Registration Methods
+## Registration via Platform Bridge API
 
-### Method 1: Interactive Wizard (Recommended)
+Send a signed POST request to the registration endpoint:
 
-```bash
-bounty
+```
+POST https://chain.platform.network/api/v1/bridge/bounty-challenge/register
 ```
 
-The wizard guides you through:
-1. Entering your secret key
-2. Verifying your hotkey
-3. Entering your GitHub username
-4. Signing and submitting
+### Request Body
 
-### Method 2: With Environment Variables
+```json
+{
+  "hotkey": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+  "github_username": "johndoe",
+  "signature": "0x...",
+  "timestamp": 1705590000
+}
+```
 
-```bash
-# Set your secret key
-export MINER_SECRET_KEY="your-64-char-hex-or-mnemonic"
+### Signature Message Format
 
-# Run wizard (will auto-detect key)
-bounty wizard
+```
+register_github:{github_username_lowercase}:{timestamp}
+```
+
+The signature must be an **sr25519** signature using the secret key corresponding to your hotkey.
+
+## Code Examples
+
+### Python
+
+```python
+import requests
+import time
+from substrateinterface import Keypair
+
+# Create keypair from seed
+keypair = Keypair.create_from_mnemonic("your mnemonic here")
+
+# Prepare registration
+timestamp = int(time.time())
+message = f"register_github:johndoe:{timestamp}"
+signature = keypair.sign(message.encode()).hex()
+
+# Register
+response = requests.post(
+    "https://chain.platform.network/api/v1/bridge/bounty-challenge/register",
+    json={
+        "hotkey": keypair.ss58_address,
+        "github_username": "johndoe",
+        "signature": f"0x{signature}",
+        "timestamp": timestamp
+    }
+)
+
+print(response.json())
+```
+
+### JavaScript
+
+```javascript
+const { Keyring } = require('@polkadot/keyring');
+const { u8aToHex } = require('@polkadot/util');
+
+async function register(mnemonic, githubUsername) {
+    const keyring = new Keyring({ type: 'sr25519' });
+    const pair = keyring.addFromMnemonic(mnemonic);
+    
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `register_github:${githubUsername.toLowerCase()}:${timestamp}`;
+    const signature = pair.sign(message);
+    
+    const response = await fetch(
+        'https://chain.platform.network/api/v1/bridge/bounty-challenge/register',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                hotkey: pair.address,
+                github_username: githubUsername,
+                signature: u8aToHex(signature),
+                timestamp: timestamp
+            })
+        }
+    );
+    
+    console.log(await response.json());
+}
 ```
 
 ## Secret Key Formats
 
-The CLI accepts several key formats:
+The following key formats are supported by standard Substrate libraries:
 
 ### 64-Character Hex Seed
 
@@ -68,20 +134,20 @@ Substrate URI format, useful for testing with well-known keys.
 
 1. **Message Creation**: `register_github:{username}:{timestamp}`
 2. **Signing**: sr25519 signature using your secret key
-3. **Verification**: Server verifies signature matches the claimed hotkey
+3. **Verification**: The Platform bridge verifies the signature matches the claimed hotkey
 
 ### Security
 
 - **Timestamp**: Must be within 5 minutes (prevents replay attacks)
 - **Username**: Lowercase for consistency
-- **Hotkey**: Derived from your signature, not trusted from input
+- **One-to-one mapping**: Each hotkey maps to one GitHub username, and vice versa
 
 ## Changing Registration
 
 ### Change GitHub Username
 
 To link a different GitHub username:
-1. Run the wizard again with the same hotkey
+1. Send a new registration request with the same hotkey
 2. Enter the new GitHub username
 3. The old link is replaced
 
@@ -111,21 +177,4 @@ To link your GitHub to a different hotkey:
 ### "Hotkey already registered" Error
 
 - **Cause**: This hotkey is linked to another GitHub username
-- **Fix**: Run wizard again to update the linked username
-
-## API Registration
-
-For programmatic registration:
-
-```bash
-curl -X POST https://chain.platform.network/api/v1/bridge/bounty-challenge/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hotkey": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-    "github_username": "johndoe",
-    "signature": "0x...",
-    "timestamp": 1705590000
-  }'
-```
-
-See the [API Reference](../reference/api-reference.md) for details.
+- **Fix**: Send a new registration request to update the linked username

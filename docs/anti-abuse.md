@@ -8,11 +8,12 @@ Bounty Challenge implements multiple layers of protection against gaming and abu
 
 | Attack | Description | Mitigation |
 |--------|-------------|------------|
-| **Spam** | Mass low-quality issues | Maintainer gatekeeping + logarithmic scoring |
+| **Spam** | Mass low-quality issues | Maintainer gatekeeping + penalty system |
 | **Duplication** | Same bug reported twice | First reporter wins (single-claim rule) |
 | **Collusion** | Fake maintainer approval | Project-level access control |
 | **Frontrunning** | Claiming others' issues | Author match verification |
 | **Self-Approval** | Miners validating own issues | Only project members can add labels |
+| **Validator Manipulation** | Single validator approving issues | Multi-validator consensus required |
 
 ## Protection Layers
 
@@ -28,22 +29,17 @@ Issue Created → Maintainer Review → Valid Label Added → Bounty Eligible
 
 This is the primary defense: no matter how many issues you create, they're worthless without maintainer approval.
 
-### 2. GitHub API Verification
+### 2. Validator Consensus
 
-Every claim is verified in real-time via GitHub API:
+The WASM module requires multiple validators to agree on issue data before it is accepted:
 
-```rust
-pub async fn verify_issue_validity(&self, issue_number: u32, author: &str) -> Result<BountyVerification> {
-    let issue = self.get_issue(issue_number).await?;
-    
-    let is_author_match = issue.user.login.to_lowercase() == author.to_lowercase();
-    let is_valid = issue.is_closed() && issue.has_valid_label();
-    
-    Ok(BountyVerification {
-        is_valid_bounty: is_valid && is_author_match,
-        // ...
-    })
-}
+- **Sync Consensus**: Validators propose synced issue data via `/sync/propose`. A majority must agree before the data is stored.
+- **Issue Validity Consensus**: Validators propose issue validity via `/issue/propose`. A majority vote determines the outcome.
+
+```
+Validator A proposes ─┐
+Validator B proposes ─┼──▶ Majority? ──▶ Consensus reached ──▶ Data stored
+Validator C proposes ─┘
 ```
 
 ### 3. Author Verification
@@ -60,42 +56,54 @@ This prevents:
 - Claiming others' work
 - Frontrunning legitimate reporters
 
+The verification is performed in the WASM module's `validate_issue()` function:
+
+```rust
+if issue.author.to_lowercase() != expected_author.to_lowercase() {
+    return (false, Some("Author mismatch"));
+}
+```
+
 ### 4. Single Claim Rule
 
-Each issue can only be claimed once:
+Each issue can only be claimed once. The WASM module checks host storage before recording:
 
-```sql
-INSERT OR IGNORE INTO validated_bounties (issue_number, ...)
+```rust
+if storage::is_issue_recorded(&repo_owner, &repo_name, issue_number) {
+    // Reject: "Issue already claimed"
+}
 ```
 
-First valid claim wins. Subsequent attempts are rejected with:
-```json
-{"reason": "Issue already claimed"}
-```
+First valid claim wins. Subsequent attempts are rejected.
 
-### 5. Linear Points System
+### 5. Penalty System
 
-Each valid issue earns exactly 1 point with a clear cap:
+Invalid and duplicate issues reduce a miner's balance:
 
-| Issues | Points | Weight |
-|--------|--------|--------|
-| 1 | 1 | 2% |
-| 10 | 10 | 20% |
-| 50 | 50 | 100% (capped) |
+| Penalty Type | Formula |
+|-------------|---------|
+| **Invalid** | `max(0, invalid_count - valid_count)` |
+| **Duplicate** | `max(0, duplicate_count - valid_count)` |
 
-The 50-point cap and maintainer gatekeeping ensure mass submission is uneconomical.
+If `net_points ≤ 0`, the miner's weight becomes **0** (penalized).
+
+See [Scoring & Rewards](reference/scoring.md) for detailed penalty calculations.
 
 ### 6. Registration Requirement
 
 Miners must register their GitHub username before claiming:
 
 ```
-1. Register: hotkey → github_username
+1. Register: hotkey → github_username (signed with sr25519)
 2. Create issues (as github_username)
 3. Claim bounties (verified against registration)
 ```
 
-This creates an audit trail and prevents anonymous claiming.
+This creates an audit trail and prevents anonymous claiming. Each hotkey maps to exactly one GitHub username, and vice versa.
+
+### 7. Signature Verification
+
+All authenticated operations require sr25519 signatures, proving ownership of the hotkey. The Platform bridge verifies signatures before forwarding requests to the WASM module.
 
 ## Verification Flow
 
@@ -104,17 +112,16 @@ This creates an audit trail and prevents anonymous claiming.
 │                    CLAIM VERIFICATION                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Input: issue_number=42, github_username="alice"            │
+│  Input: issue_numbers=[42], github_username="alice"         │
 │                                                              │
 │  ┌─────────────────┐                                        │
 │  │ Already claimed?│──Yes──▶ REJECT: "Already claimed"      │
 │  └────────┬────────┘                                        │
 │           │No                                                │
 │  ┌────────▼────────┐                                        │
-│  │ Fetch from      │                                        │
-│  │ GitHub API      │                                        │
+│  │ In synced data? │──No───▶ REJECT: "Not found"            │
 │  └────────┬────────┘                                        │
-│           │                                                  │
+│           │Yes                                               │
 │  ┌────────▼────────┐                                        │
 │  │ Is closed?      │──No───▶ REJECT: "Issue not closed"     │
 │  └────────┬────────┘                                        │
@@ -128,8 +135,9 @@ This creates an audit trail and prevents anonymous claiming.
 │  └────────┬────────┘                                        │
 │           │Yes                                               │
 │  ┌────────▼────────┐                                        │
-│  │ Record bounty   │                                        │
-│  │ Update score    │                                        │
+│  │ Record in       │                                        │
+│  │ host storage    │                                        │
+│  │ Update balance  │                                        │
 │  └────────┬────────┘                                        │
 │           │                                                  │
 │           ▼                                                  │
@@ -137,26 +145,6 @@ This creates an audit trail and prevents anonymous claiming.
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-## Rate Limiting
-
-### GitHub API Limits
-
-| Authentication | Rate Limit |
-|----------------|------------|
-| No token | 60 requests/hour |
-| With token | 5,000 requests/hour |
-
-The challenge respects these limits with:
-- 100ms delay between paginated requests
-- Error handling for rate limit responses
-
-### Claim Rate
-
-No explicit claim rate limit (GitHub API is the bottleneck), but:
-- Each claim requires an API call
-- Failed claims don't count
-- Repeated claims for same issue are ignored
 
 ## Monitoring
 
@@ -171,18 +159,12 @@ Operators should monitor for:
 
 ### Audit Trail
 
-All bounties are logged with:
+All bounties are tracked in host storage with:
 - Issue number
+- Repository owner and name
 - GitHub username
 - Miner hotkey
-- Timestamp
-- Issue URL
-
-```sql
-SELECT * FROM validated_bounties 
-WHERE validated_at > datetime('now', '-1 day')
-ORDER BY validated_at DESC;
-```
+- Recording epoch
 
 ## Future Enhancements
 
