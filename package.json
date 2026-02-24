@@ -14,6 +14,7 @@
     "analyze": "tsx src/index.ts --skip-fetch",
     "analyze-issues": "tsx src/analyze-issues.ts",
     "dispatch": "tsx src/orchestrator.ts",
+    "worker": "tsx src/worker.ts",
     "dry-run": "tsx src/index.ts --dry-run",
     "typecheck": "tsc --noEmit"
   },
