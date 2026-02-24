@@ -36,7 +36,7 @@ interface WorkerSpec {
   repo_path: string;
 }
 
-const README_CONTENT = `# Bounty Challenge Pipeline
+export const README_CONTENT = `# Bounty Challenge Pipeline
 
 Automated pipeline for fetching, analyzing, and dispatching GitHub issue workers.
 
@@ -266,7 +266,7 @@ function extractKeywords(text: string): string[] {
   return combined.filter((kw) => kw.length > 2 && kw.length < 100);
 }
 
-function findMatchingFiles(keywords: string[], repoFiles: string[], repoPath: string): string[] {
+function findMatchingFiles(keywords: string[], repoFiles: string[], _repoPath: string): string[] {
   const matched = new Set<string>();
 
   for (const keyword of keywords) {
