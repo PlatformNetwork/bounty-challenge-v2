@@ -12,8 +12,10 @@
     "clone-repo": "tsx src/clone-repo.ts",
     "generate-worker-specs": "tsx src/generate-worker-specs.ts",
     "analyze": "tsx src/index.ts --skip-fetch",
+    "analyze-issues": "tsx src/analyze-issues.ts",
     "dispatch": "tsx src/index.ts --skip-fetch",
-    "dry-run": "tsx src/index.ts --dry-run"
+    "dry-run": "tsx src/index.ts --dry-run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "commander": "^12.1.0",

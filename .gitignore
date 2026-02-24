@@ -3,6 +3,10 @@
 **/target/
 **/*.rs.bk
 
+# Node.js
+node_modules/
+dist/
+
 # IDE
 .idea/
 .vscode/
