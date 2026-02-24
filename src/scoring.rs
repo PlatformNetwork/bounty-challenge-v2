@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::storage;
 use crate::types::LeaderboardEntry;
 
-pub const WEIGHT_PER_POINT: f64 = 0.02;
+pub const WEIGHT_PER_POINT: f64 = 0.025;
 pub const STAR_BONUS_PER_REPO: f64 = 0.25;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
