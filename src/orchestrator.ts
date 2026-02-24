@@ -10,17 +10,27 @@ const MANIFEST_PATH = join(PROJECT_ROOT, "output", "dispatch-manifest.json");
 const RESULTS_PATH = join(PROJECT_ROOT, "output", "results.json");
 const WORKER_SCRIPT = join(PROJECT_ROOT, "src", "worker.ts");
 
+interface ManifestSpec {
+  issue_number: number;
+  issue_title: string;
+  spec_file: string;
+  branch_name: string;
+  target_repo: string;
+}
+
+interface DispatchManifest {
+  generated_at: string;
+  total_specs: number;
+  specs: ManifestSpec[];
+}
+
 interface WorkerSpec {
   id: string;
   issueNumber: number;
   repo: string;
   branch: string;
   title: string;
-  [key: string]: unknown;
-}
-
-interface DispatchManifest {
-  workers: WorkerSpec[];
+  specFile: string;
 }
 
 type WorkerStatus = "pending" | "in-progress" | "completed" | "failed";
@@ -43,13 +53,22 @@ interface WorkerMessage {
   error?: string;
 }
 
-function loadManifest(): DispatchManifest {
+function loadManifest(): WorkerSpec[] {
   if (!existsSync(MANIFEST_PATH)) {
     console.error(`Manifest not found: ${MANIFEST_PATH}`);
     process.exit(1);
   }
   const raw = readFileSync(MANIFEST_PATH, "utf-8");
-  return JSON.parse(raw) as DispatchManifest;
+  const manifest = JSON.parse(raw) as DispatchManifest;
+
+  return manifest.specs.map((spec) => ({
+    id: `worker-${spec.issue_number}`,
+    issueNumber: spec.issue_number,
+    repo: spec.target_repo,
+    branch: spec.branch_name,
+    title: spec.issue_title,
+    specFile: spec.spec_file,
+  }));
 }
 
 function formatProgress(index: number, total: number, spec: WorkerSpec, status: string): string {
@@ -190,8 +209,7 @@ function writeResults(results: WorkerResult[]): void {
 async function main(): Promise<void> {
   console.log("=== Bounty Challenge Worker Orchestrator ===\n");
 
-  const manifest = loadManifest();
-  const { workers } = manifest;
+  const workers = loadManifest();
   const total = workers.length;
 
   if (total === 0) {

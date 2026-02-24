@@ -1,88 +1,90 @@
 {
-  "workers": [
+  "generated_at": "2025-01-01T00:00:00.000Z",
+  "total_specs": 12,
+  "specs": [
     {
-      "id": "worker-1",
-      "issueNumber": 12,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-12",
-      "title": "Fix scoring calculation overflow"
+      "issue_number": 12,
+      "issue_title": "Fix scoring calculation overflow",
+      "spec_file": "output/worker-specs/issue-12.json",
+      "branch_name": "fix/bounty-issue-12",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-2",
-      "issueNumber": 23,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-23",
-      "title": "Handle empty leaderboard response"
+      "issue_number": 23,
+      "issue_title": "Handle empty leaderboard response",
+      "spec_file": "output/worker-specs/issue-23.json",
+      "branch_name": "fix/bounty-issue-23",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-3",
-      "issueNumber": 34,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-34",
-      "title": "Fix duplicate claim detection"
+      "issue_number": 34,
+      "issue_title": "Fix duplicate claim detection",
+      "spec_file": "output/worker-specs/issue-34.json",
+      "branch_name": "fix/bounty-issue-34",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-4",
-      "issueNumber": 45,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-45",
-      "title": "Correct weight normalization edge case"
+      "issue_number": 45,
+      "issue_title": "Correct weight normalization edge case",
+      "spec_file": "output/worker-specs/issue-45.json",
+      "branch_name": "fix/bounty-issue-45",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-5",
-      "issueNumber": 56,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-56",
-      "title": "Fix timestamp validation window"
+      "issue_number": 56,
+      "issue_title": "Fix timestamp validation window",
+      "spec_file": "output/worker-specs/issue-56.json",
+      "branch_name": "fix/bounty-issue-56",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-6",
-      "issueNumber": 67,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-67",
-      "title": "Handle missing storage key gracefully"
+      "issue_number": 67,
+      "issue_title": "Handle missing storage key gracefully",
+      "spec_file": "output/worker-specs/issue-67.json",
+      "branch_name": "fix/bounty-issue-67",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-7",
-      "issueNumber": 78,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-78",
-      "title": "Fix consensus threshold rounding"
+      "issue_number": 78,
+      "issue_title": "Fix consensus threshold rounding",
+      "spec_file": "output/worker-specs/issue-78.json",
+      "branch_name": "fix/bounty-issue-78",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-8",
-      "issueNumber": 89,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-89",
-      "title": "Correct penalty calculation for edge case"
+      "issue_number": 89,
+      "issue_title": "Correct penalty calculation for edge case",
+      "spec_file": "output/worker-specs/issue-89.json",
+      "branch_name": "fix/bounty-issue-89",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-9",
-      "issueNumber": 90,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-90",
-      "title": "Fix star bonus accumulation"
+      "issue_number": 90,
+      "issue_title": "Fix star bonus accumulation",
+      "spec_file": "output/worker-specs/issue-90.json",
+      "branch_name": "fix/bounty-issue-90",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-10",
-      "issueNumber": 101,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-101",
-      "title": "Handle registration race condition"
+      "issue_number": 101,
+      "issue_title": "Handle registration race condition",
+      "spec_file": "output/worker-specs/issue-101.json",
+      "branch_name": "fix/bounty-issue-101",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-11",
-      "issueNumber": 112,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-112",
-      "title": "Fix route dispatch for unknown paths"
+      "issue_number": 112,
+      "issue_title": "Fix route dispatch for unknown paths",
+      "spec_file": "output/worker-specs/issue-112.json",
+      "branch_name": "fix/bounty-issue-112",
+      "target_repo": "CortexLM/cortex-ide"
     },
     {
-      "id": "worker-12",
-      "issueNumber": 123,
-      "repo": "PlatformNetwork/bounty-challenge",
-      "branch": "fix/issue-123",
-      "title": "Correct bincode deserialization limit"
+      "issue_number": 123,
+      "issue_title": "Correct bincode deserialization limit",
+      "spec_file": "output/worker-specs/issue-123.json",
+      "branch_name": "fix/bounty-issue-123",
+      "target_repo": "CortexLM/cortex-ide"
     }
   ]
 }
