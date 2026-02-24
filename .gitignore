@@ -30,8 +30,11 @@ logs/
 # Node.js
 node_modules/
 dist/
-output/
 package-lock.json
+
+# Pipeline output (keep dispatch-manifest.json tracked)
+output/*
+!output/dispatch-manifest.json
 
 # Clone script workspace
 workspace/

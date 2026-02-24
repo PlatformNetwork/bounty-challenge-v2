@@ -13,7 +13,7 @@
     "generate-worker-specs": "tsx src/generate-worker-specs.ts",
     "analyze": "tsx src/index.ts --skip-fetch",
     "analyze-issues": "tsx src/analyze-issues.ts",
-    "dispatch": "tsx src/index.ts --skip-fetch",
+    "dispatch": "tsx src/orchestrator.ts",
     "dry-run": "tsx src/index.ts --dry-run",
     "typecheck": "tsc --noEmit"
   },

@@ -1,0 +1,88 @@
+{
+  "workers": [
+    {
+      "id": "worker-1",
+      "issueNumber": 12,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-12",
+      "title": "Fix scoring calculation overflow"
+    },
+    {
+      "id": "worker-2",
+      "issueNumber": 23,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-23",
+      "title": "Handle empty leaderboard response"
+    },
+    {
+      "id": "worker-3",
+      "issueNumber": 34,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-34",
+      "title": "Fix duplicate claim detection"
+    },
+    {
+      "id": "worker-4",
+      "issueNumber": 45,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-45",
+      "title": "Correct weight normalization edge case"
+    },
+    {
+      "id": "worker-5",
+      "issueNumber": 56,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-56",
+      "title": "Fix timestamp validation window"
+    },
+    {
+      "id": "worker-6",
+      "issueNumber": 67,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-67",
+      "title": "Handle missing storage key gracefully"
+    },
+    {
+      "id": "worker-7",
+      "issueNumber": 78,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-78",
+      "title": "Fix consensus threshold rounding"
+    },
+    {
+      "id": "worker-8",
+      "issueNumber": 89,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-89",
+      "title": "Correct penalty calculation for edge case"
+    },
+    {
+      "id": "worker-9",
+      "issueNumber": 90,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-90",
+      "title": "Fix star bonus accumulation"
+    },
+    {
+      "id": "worker-10",
+      "issueNumber": 101,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-101",
+      "title": "Handle registration race condition"
+    },
+    {
+      "id": "worker-11",
+      "issueNumber": 112,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-112",
+      "title": "Fix route dispatch for unknown paths"
+    },
+    {
+      "id": "worker-12",
+      "issueNumber": 123,
+      "repo": "PlatformNetwork/bounty-challenge",
+      "branch": "fix/issue-123",
+      "title": "Correct bincode deserialization limit"
+    }
+  ]
+}
