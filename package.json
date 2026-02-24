@@ -10,6 +10,7 @@
     "fetch": "tsx src/index.ts --skip-fetch=false",
     "fetch-issues": "tsx src/fetch-issues.ts",
     "clone-repo": "tsx src/clone-repo.ts",
+    "generate-worker-specs": "tsx src/generate-worker-specs.ts",
     "analyze": "tsx src/index.ts --skip-fetch",
     "dispatch": "tsx src/index.ts --skip-fetch",
     "dry-run": "tsx src/index.ts --dry-run"
