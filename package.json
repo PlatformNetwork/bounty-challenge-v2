@@ -5,6 +5,7 @@
   "description": "GitHub Issue Reward System for Platform Network",
   "scripts": {
     "fetch-issues": "tsx src/fetch-issues.ts",
+    "clone-repo": "tsx src/clone-repo.ts",
     "build": "tsc"
   },
   "devDependencies": {
