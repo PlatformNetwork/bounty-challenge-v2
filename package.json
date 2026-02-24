@@ -1,0 +1,15 @@
+{
+  "name": "bounty-challenge-v2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Issue Reward System for Platform Network",
+  "scripts": {
+    "fetch-issues": "tsx src/fetch-issues.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
