@@ -497,23 +497,21 @@ async function executeFixWorkflow(spec: WorkerSpec): Promise<WorkerResult> {
 
   // Step 6: Commit and push via git-manager
   const hasAutoFixes = appliedFixes.length > 0;
-  const commitMessage = hasAutoFixes
-    ? `fix: auto-fix for issue #${spec.issue_number} — ${spec.issue_title}`
-    : `chore: add patch analysis for issue #${spec.issue_number} — ${spec.issue_title}`;
 
-  const changedFiles = hasAutoFixes
-    ? patches
-        .flatMap((p) =>
-          p.suggestions
-            .filter((s) => s.original && s.replacement)
-            .map(() => p.file)
-        )
-        .filter((f, i, arr) => arr.indexOf(f) === i)
-    : [];
+  if (hasAutoFixes) {
+    const commitMessage = `fix: auto-fix for issue #${spec.issue_number} — ${spec.issue_title}`;
 
-  const filesToCommit = [...changedFiles, patchFile];
-  commitChanges(branchName, commitMessage, filesToCommit);
-  pushBranch(branchName);
+    const changedFiles = patches
+      .flatMap((p) =>
+        p.suggestions
+          .filter((s) => s.original && s.replacement)
+          .map(() => p.file)
+      )
+      .filter((f, i, arr) => arr.indexOf(f) === i);
+
+    commitChanges(branchName, commitMessage, changedFiles);
+    pushBranch(branchName);
+  }
 
   // Step 7: Create PR via git-manager
   try {
