@@ -1,7 +1,23 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-interface AnalyzedIssue {
+interface RawAnalyzedIssue {
+  number?: number;
+  issue_number?: number;
+  title?: string;
+  issue_title?: string;
+  body?: string;
+  issue_body?: string;
+  html_url?: string;
+  issue_url?: string;
+  labels?: string[];
+  matched_files?: string[];
+  affected_files?: string[];
+  keywords?: string[];
+  repo_context?: Record<string, unknown>;
+}
+
+interface NormalizedIssue {
   issue_number: number;
   issue_title: string;
   issue_body: string;
@@ -44,11 +60,23 @@ interface DispatchManifest {
 const TARGET_REPO = "CortexLM/cortex-ide";
 const BOUNTY_REPO = "bounty-challenge";
 
+function normalizeIssue(raw: RawAnalyzedIssue): NormalizedIssue {
+  return {
+    issue_number: raw.issue_number ?? raw.number ?? 0,
+    issue_title: raw.issue_title ?? raw.title ?? "",
+    issue_body: raw.issue_body ?? raw.body ?? "",
+    issue_url: raw.issue_url ?? raw.html_url ?? "",
+    labels: raw.labels ?? [],
+    affected_files: raw.affected_files ?? raw.matched_files ?? [],
+    repo_context: raw.repo_context ?? {},
+  };
+}
+
 function buildBranchName(issueNumber: number): string {
   return `fix/bounty-issue-${issueNumber}`;
 }
 
-function buildInstructions(issue: AnalyzedIssue): string {
+function buildInstructions(issue: NormalizedIssue): string {
   const fileList =
     issue.affected_files.length > 0
       ? issue.affected_files.map((f) => `  - ${f}`).join("\n")
@@ -94,7 +122,7 @@ function buildInstructions(issue: AnalyzedIssue): string {
 }
 
 function buildPrTemplate(
-  issue: AnalyzedIssue
+  issue: NormalizedIssue
 ): WorkerSpec["pr_template"] {
   return {
     title: `Fix: ${issue.issue_title} (${BOUNTY_REPO}#${issue.issue_number})`,
@@ -123,7 +151,7 @@ function buildPrTemplate(
   };
 }
 
-function generateWorkerSpec(issue: AnalyzedIssue): WorkerSpec {
+function generateWorkerSpec(issue: NormalizedIssue): WorkerSpec {
   return {
     issue_number: issue.issue_number,
     issue_title: issue.issue_title,
@@ -153,18 +181,20 @@ function main(): void {
   }
 
   const raw = readFileSync(inputPath, "utf-8");
-  let issues: AnalyzedIssue[];
+  let rawIssues: RawAnalyzedIssue[];
   try {
-    issues = JSON.parse(raw);
+    rawIssues = JSON.parse(raw);
   } catch (err) {
     console.error(`Error: Failed to parse ${inputPath}:`, err);
     process.exit(1);
   }
 
-  if (!Array.isArray(issues)) {
+  if (!Array.isArray(rawIssues)) {
     console.error("Error: analyzed-issues.json must contain a JSON array");
     process.exit(1);
   }
+
+  const issues = rawIssues.map(normalizeIssue);
 
   mkdirSync(outputDir, { recursive: true });
 
