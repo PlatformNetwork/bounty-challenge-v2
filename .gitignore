@@ -17,7 +17,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
-*.env
+!.env.example
 
 # Logs
 *.log
@@ -31,3 +31,6 @@ package-lock.json
 
 # Clone script workspace
 workspace/
+
+# Pipeline output
+repos/

@@ -3,10 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "description": "GitHub Issue Reward System for Platform Network",
+  "main": "dist/index.js",
   "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "fetch": "tsx src/index.ts --skip-fetch=false",
     "fetch-issues": "tsx src/fetch-issues.ts",
     "clone-repo": "tsx src/clone-repo.ts",
-    "build": "tsc"
+    "analyze": "tsx src/index.ts --skip-fetch",
+    "dispatch": "tsx src/index.ts --skip-fetch",
+    "dry-run": "tsx src/index.ts --dry-run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
