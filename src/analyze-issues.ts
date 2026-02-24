@@ -66,6 +66,11 @@ interface AnalyzedIssue extends RawIssue {
   complexity: Complexity;
   keywords: string[];
   parsed_body: ParsedBody;
+  issue_number: number;
+  issue_title: string;
+  issue_body: string;
+  issue_url: string;
+  repo_context: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,10 +408,11 @@ function main(): void {
   const issues = readJson<RawIssue[]>(issuesPath);
   console.log(`Loaded ${issues.length} issues from ${issuesPath}`);
 
-  let _repoContext: RepoContext | null = null;
+  let repoContext: RepoContext | null = null;
   if (existsSync(repoContextPath)) {
-    _repoContext = readJson<RepoContext>(repoContextPath);
-    console.log(`Loaded repo context from ${repoContextPath}`);
+    repoContext = readJson<RepoContext>(repoContextPath);
+    const repoName = repoContext.repository ?? repoContext.repo ?? "unknown";
+    console.log(`Loaded repo context from ${repoContextPath} (repo: ${repoName})`);
   } else {
     console.warn(`Warning: ${repoContextPath} not found, proceeding without repo context.`);
   }
@@ -435,6 +441,11 @@ function main(): void {
       complexity,
       keywords,
       parsed_body: parsed,
+      issue_number: issue.number,
+      issue_title: issue.title,
+      issue_body: issue.body ?? "",
+      issue_url: issue.html_url ?? "",
+      repo_context: (repoContext as Record<string, unknown>) ?? {},
     };
   });
 
